@@ -19,7 +19,7 @@ const OPERATORS = ['>', '>=', '<', '<='];
 
 function switchTab(name) {
   document.querySelectorAll('.rw-tab').forEach(t => t.classList.toggle('on', t.dataset.tab === name));
-  ['general', 'rules', 'plugins'].forEach(n => document.getElementById('pane-' + n).classList.toggle('on', n === name));
+  ['general', 'rules', 'plugins', 'about'].forEach(n => document.getElementById('pane-' + n).classList.toggle('on', n === name));
 }
 window.switchTab = switchTab;
 
@@ -33,6 +33,7 @@ async function init() {
     renderGeneral();
     renderRules();
     renderPlugins();
+    renderAbout();
   } catch (e) {
     const pane = document.getElementById('pane-general');
     if (pane) pane.innerHTML = '<div style="color:#ff8888;font-size:12px">初始化出错：' + esc(e.message || e) + '</div>';
@@ -205,9 +206,9 @@ async function renderPlugins() {
   const el = document.getElementById('pane-plugins');
   el.innerHTML =
     '<div style="margin-bottom:8px">' +
-    '<button class="rw-btn" id="plug-reload">⟳ 重新加载插件</button> ' +
-    '<button class="rw-btn" id="plug-dir">📂 打开插件目录</button> ' +
-    '<button class="rw-btn" id="plug-docs">📖 插件开发文档</button></div>' +
+    '<button class="rw-btn" id="plug-reload">重新加载插件</button> ' +
+    '<button class="rw-btn" id="plug-dir">打开插件目录</button> ' +
+    '<button class="rw-btn" id="plug-docs">插件开发文档</button></div>' +
     '<div id="plug-docs-box" style="display:none;margin-bottom:10px"></div>' +
     '<div id="plug-list" style="font-size:12px;color:#c8d0da">加载中…</div>';
 
@@ -248,14 +249,31 @@ async function renderPlugins() {
     const pv = document.getElementById('plug-preview');
     const src = await window.rimletter.previewPlugin(b.dataset.preview);
     pv.style.display = 'block';
-    pv.innerHTML = '<div style="font-size:12px;color:#e8ecf1;font-weight:600;margin-bottom:6px">📄 ' + esc(src.name) + '.js 源码</div>' +
+    pv.innerHTML = '<div style="font-size:12px;color:#e8ecf1;font-weight:600;margin-bottom:6px">' + esc(src.name) + '.js 源码</div>' +
       '<pre style="margin:0;font-size:11px;color:#9fd8a8;background:rgb(10,13,16);padding:10px;border-radius:4px;overflow:auto;max-height:300px;white-space:pre-wrap">' + esc(src.source || src.error || '') + '</pre>';
   }));
 }
 
+// ============ 关于 ============
+async function renderAbout() {
+  const el = document.getElementById('pane-about');
+  let info;
+  try { info = await window.rimletter.getAppInfo(); } catch { info = { name: 'RimLetter 边缘信使', version: '?', author: 'NothingCooker', social: 'https://space.bilibili.com/514132068' }; }
+  el.innerHTML =
+    '<div style="text-align:center;padding:30px 20px">' +
+    '<div style="font-size:16px;font-weight:600;color:#fff;margin-bottom:6px">' + esc(info.name) + '</div>' +
+    '<div class="rw-gray" style="display:inline-block">版本 ' + esc(info.version) + '</div>' +
+    '<div class="rw-sep"></div>' +
+    '<div style="font-size:13px;color:#c8d0da;margin:8px 0">参考《边缘世界》(RimWorld) 右侧 Letter 播报的桌面功能性摆件</div>' +
+    '<div style="margin:14px 0"><a href="' + esc(info.authorUrl || 'https://github.com/NothingCooker') + '" class="rw-btn" target="_blank" rel="noopener" style="text-decoration:none">GitHub 作者：' + esc(info.author) + '</a></div>' +
+    '<div><a href="' + esc(info.social) + '" class="rw-btn" target="_blank" rel="noopener" style="text-decoration:none">Bilibili：space.bilibili.com/514132068</a></div>' +
+    '<div style="font-size:11px;color:#7f8a96;margin-top:20px">素材提取自用户自有的游戏，仅供个人使用</div>' +
+    '</div>';
+}
+
 function docsHtml() {
   return '<div class="rw-editor" style="color:#d8dee6">' +
-    '<div style="font-size:13px;color:#fff;font-weight:600;margin-bottom:8px">📖 插件开发文档</div>' +
+    '<div style="font-size:13px;color:#fff;font-weight:600;margin-bottom:8px">插件开发文档</div>' +
     '<div style="font-size:12px;color:#9aa5b1;margin-bottom:10px">插件 = plugins/ 目录下的一个 .js 文件，导出 async ({ api, logger }) => { ... }。' +
     '启用的插件在启动和「重新加载」时执行；注册的传感器会出现在规则下拉里。</div>' +
     PLUGIN_DOCS.map(d => '<div style="margin:6px 0"><code style="color:#9fd8a8;background:rgb(10,13,16);padding:2px 6px;border-radius:3px;font-size:11px">' + d[0] + '</code>' +

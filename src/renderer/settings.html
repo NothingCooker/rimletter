@@ -17,17 +17,19 @@
 <div id="app" class="rw-window">
   <div class="rw-titlebar">
     <b>RimLetter 设置</b>
-    <button class="rw-btn small" onclick="closeSettings()">✕</button>
+    <button class="rw-btn small" onclick="closeSettings()">X</button>
   </div>
   <div class="rw-tabs">
-    <span class="rw-tab on" data-tab="general" onclick="switchTab('general')">⚙ 常规设置</span>
-    <span class="rw-tab" data-tab="rules" onclick="switchTab('rules')">📜 告警规则</span>
-    <span class="rw-tab" data-tab="plugins" onclick="switchTab('plugins')">🧩 插件管理</span>
+    <span class="rw-tab on" data-tab="general" onclick="switchTab('general')">常规设置</span>
+    <span class="rw-tab" data-tab="rules" onclick="switchTab('rules')">告警规则</span>
+    <span class="rw-tab" data-tab="plugins" onclick="switchTab('plugins')">插件管理</span>
+    <span class="rw-tab" data-tab="about" onclick="switchTab('about')">关于</span>
   </div>
   <div class="body">
     <div id="pane-general" class="rw-pane on"></div>
     <div id="pane-rules" class="rw-pane"></div>
     <div id="pane-plugins" class="rw-pane"></div>
+    <div id="pane-about" class="rw-pane"></div>
   </div>
   <div class="foot">
     <span class="grow"></span>

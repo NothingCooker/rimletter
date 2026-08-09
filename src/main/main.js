@@ -143,7 +143,7 @@ function createTray() {
   tray.setToolTip('RimLetter 边缘信使');
   tray.on('click', openSettings);
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '⚙ 设置', click: openSettings },
+    { label: '设置', click: openSettings },
     { label: '测试播报', click: () => triggerLetter({ severity: 'ThreatSmall', title: '测试播报', description: '这是一封测试信' }) },
     { type: 'separator' },
     { label: '退出', click: () => app.quit() }
@@ -151,6 +151,13 @@ function createTray() {
 }
 
 // ---- IPC ----
+ipcMain.handle('app:info', () => ({
+  name: 'RimLetter 边缘信使',
+  version: app.getVersion(),
+  author: 'NothingCooker',
+  authorUrl: 'https://github.com/NothingCooker',
+  social: 'https://space.bilibili.com/514132068'
+}));
 ipcMain.handle('autostart:get', () => app.getLoginItemSettings().openAtLogin);
 ipcMain.handle('autostart:set', (e, enable) => {
   app.setLoginItemSettings({ openAtLogin: !!enable });
