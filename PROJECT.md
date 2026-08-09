@@ -28,7 +28,7 @@
 ## 4. 功能特性
 
 - 全屏透明悬浮层，平时隐身，鼠标穿透，仅信区域可交互
-- 信从上方 200px 坠落滑入（1s）+ 淡入；全屏径向闪光；威胁级弹跳
+- 信从上方 200px 坠落滑入（1s）+ 淡入；全屏径向闪光；威胁级弹跳；**点掉信后剩余信立即非线性上移补位**（FLIP 动画）
 - 标题**居中于图标中心、允许向两侧溢出**（游戏原版行为），图标+文字一起浮动
 - 五种紧急度配色（取自游戏 LetterDefs）：
   - ThreatBig 重大威胁 - 红 `#CC7373`
@@ -40,7 +40,7 @@
   - 含状态机：去重（不刷屏）、持续时长判定（防瞬时尖峰误报）、恢复时发"恢复正常"蓝信
 - 本地 HTTP API（token 鉴权）：任何程序触发播报/管规则
 - 插件系统：手写 JS，注册自定义传感器/规则/主动播报，注册的传感器自动出现在规则下拉
-- 游戏原声音效（提取自 FMOD 音频，WAV 格式）
+- 游戏原声音效（提取自 FMOD 音频，WAV 格式）：信出现时按紧急度播放对应原声（`auto` 哨兵解析为默认音效），音量可调，默认 25%
 - 托盘图标：单击打开设置、右键菜单（设置/测试播报/退出）
 - 开机自启开关（设置窗可切，写 Windows 注册表 Run 项）
 - 自动更新：启动静默检查 GitHub 新版，下载完成用「信」通知，重启自动安装；设置可关闭/立即检查/立即重启安装
@@ -71,17 +71,20 @@ D:\claudeswork\RIM DESKTOP\
 │   │   ├── main.js           # Electron 入口：透明窗+托盘+IPC+组装服务
 │   │   ├── config.js         # 配置加载/保存（DEFAULT_CONFIG + deepMerge）
 │   │   ├── letterdefs.js     # 5 级紧急度定义（游戏数值）
+│   │   ├── letters.js        # 信对象格式化（音效回退：空/auto 哨兵→默认音效）
 │   │   ├── rules.js          # 规则引擎（纯函数）
 │   │   ├── sensors.js        # 传感器读取（依赖注入 si）
 │   │   ├── monitor.js        # 轮询服务（动态 snapshot 门面）
 │   │   ├── api.js            # 本地 HTTP API
-│   │   └── plugins.js        # 插件加载器
+│   │   ├── plugins.js        # 插件加载器
+│   │   ├── updater.js        # 自动更新状态机
+│   │   └── autostart.js      # 开机自启参数（纯函数）
 │   └── renderer/
 │       ├── preload.js        # contextBridge IPC 桥
 │       ├── overlay.html/js   # 全屏透明覆盖层（信堆栈+动画）
 │       ├── settings.html/js  # 设置窗口（3 页签）
 │       └── ui.css            # 环世界风格样式
-├── test/                     # node:test 单元测试（33 个）
+├── test/                     # node:test 单元测试（50 个）
 ├── plugins/example.js        # 示例插件模板（默认禁用）
 └── .github/workflows/
     ├── build.yml             # master push → 构建预览包
@@ -120,7 +123,7 @@ npm run build
   "recoveryDismissMs": 10000,      // 恢复类信消失时长
   "api": { "enabled": true, "port": 17301, "token": "自动生成" },
   "appearance": { "iconSize": 64 },// 信图标大小
-  "sound": { "enabled": true, "volume": 0.7 },
+  "sound": { "enabled": true, "volume": 0.25 },
   "plugins": { "disabled": ["example"] },
   "rules": [ /* 告警规则数组 */ ]
 }

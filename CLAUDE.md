@@ -4,30 +4,39 @@
 
 桌面功能性摆件：复刻《边缘世界》(RimWorld) 屏幕右侧的**信息播报（Letter 信件系统）**，硬件占用过高时信从屏幕右缘滑入提醒。
 
-## 实现状态（2026-08-09 完成）
-- ✅ 全部 15 个任务完成，43 个单元测试通过（`npm test`）
+## 实现状态（2026-08-09 v0.2.4 发布）
+- ✅ 全部 15 个任务完成，50 个单元测试通过（`npm test`）
 - ✅ 应用可运行：`npm start`（透明覆盖层 + 托盘 + HTTP API + 插件系统）
 - ✅ 素材已提取：`assets/raw/`(22 纹理)、`assets/letter/`(5 染色信)、`assets/sounds/`(6 游戏原声 WAV)
 - ✅ 本地 API：http://127.0.0.1:17301（token 见 `%APPDATA%\rimletter\config.json`）
 - ✅ 插件：userData/plugins/ 放 .js 即加载；插件管理页支持文档/预览/启用禁用；example 默认禁用
-- ✅ 自动更新（v0.2.3）：electron-updater，启动静默检查 GitHub 新版，下载完用「信」通知，重启自动安装；设置 → 常规可关闭/立即检查/立即重启安装（`src/main/updater.js`）
-- ⏳ 待用户视觉确认：信的滑入/闪光/弹跳/文字居中观感；设置页自动更新行观感
+- ✅ 自动更新：electron-updater，启动静默检查 GitHub 新版，下载完用「信」通知，重启自动安装；设置 → 常规可关闭/立即检查/立即重启安装（`src/main/updater.js`）
+- ✅ 信出现播放游戏原声音效（`formatLetter` 音效回退：空 / `auto` 哨兵解析为紧急度默认音效，`src/main/letters.js`）
+- ✅ 点掉信后剩余信立即非线性上移补位（FLIP 动画，`src/renderer/overlay.js`）
+- ✅ 默认音效音量 0.25；规则编辑器第一行不再出框（标签收窄 + 允许换行，`src/renderer/ui.css`）
+- ✅ 开机自启开发模式修复：`npm start` 下显式传 app 路径，避免启动裸 electron（`src/main/autostart.js`）
+- ✅ 用户视觉确认通过：信滑入/闪光/弹跳/文字观感、补位动画、设置页自动更新行
 
 ## 代码结构
 ```
 src/main/main.js        Electron 入口：透明窗+托盘+IPC+组装
-src/main/config.js      配置（appearance.iconSize 等）
+src/main/config.js      配置（DEFAULT_CONFIG + deepMerge）
+src/main/letterdefs.js  5 级紧急度定义（游戏数值）
+src/main/letters.js     信对象格式化（含音效回退）
 src/main/rules.js       规则引擎（纯函数，状态机/去重/恢复）
 src/main/sensors.js     传感器（systeminformation，可注入 mock）
 src/main/monitor.js     轮询服务（动态 snapshot 门面）
 src/main/api.js         本地 HTTP API（token 鉴权）
 src/main/plugins.js     插件加载器（注入 {api, logger}）
+src/main/updater.js     自动更新状态机（electron-updater 包装）
+src/main/autostart.js   开机自启登录项参数（纯函数）
 src/renderer/           覆盖层 + 设置窗口 + 环世界样式
 scripts/extract_assets.py  素材提取管线
 ```
 
 ## Git 与仓库
 - 远程仓库：https://github.com/NothingCooker/rimletter （公开，master 分支）
+- 当前版本：**v0.2.4**（已发布；Releases 见 https://github.com/NothingCooker/rimletter/releases）
 - GitHub CLI：`C:\Program Files\GitHub CLI\gh.exe`（PATH 未刷新，需全路径）
 - 网络（dev-sidecar 代理）：Windows 系统代理 http=127.0.0.1:31180 / https=127.0.0.1:31181
 - git 已配置：`http.proxy=127.0.0.1:31180`、`https.proxy=127.0.0.1:31181`、`http.sslBackend=schannel`（信任 dev-sidecar 的 MITM 证书）
@@ -101,3 +110,4 @@ scripts/extract_assets.py  素材提取管线
 - 拿不准的 UI 素材/观感先做成浏览器模拟让用户确认，不擅自决定
 - 监控/规则引擎放主进程，渲染层只负责画播报
 - 规则 = 传感器+指标+比较符+阈值+持续时长+紧急度+标题+描述+音效+启用，存 config.json
+- **提交绝不加 `Co-Authored-By: Claude` 尾注**：GitHub 会把协作者计入仓库 Contributors，用户已要求把 @claude 移出（2026-08-09 重写 12 个 commit + 移动 tag 实现，见「Git 与仓库」）
