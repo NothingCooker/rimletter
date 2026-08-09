@@ -17,7 +17,16 @@ async function loadPlugins({ pluginsDir, apiFactory }) {
       const fn = typeof mod === 'function' ? mod : mod.load;
       if (typeof fn !== 'function') throw new Error('plugin must export a function or a { load } function');
       const api = apiFactory(name);
-      await fn(api);
+      // 插件签名：async ({ api, logger }) => {} —— 传入上下文对象
+      const ctx = {
+        api,
+        logger: {
+          info: (...a) => console.log(`[plugin:${name}]`, ...a),
+          warn: (...a) => console.warn(`[plugin:${name}]`, ...a),
+          error: (...a) => console.error(`[plugin:${name}]`, ...a)
+        }
+      };
+      await fn(ctx);
       entry.loaded = true;
     } catch (e) {
       entry.error = String(e.message || e);
