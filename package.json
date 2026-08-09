@@ -6,10 +6,13 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "extract": "python scripts/extract_assets.py"
+    "extract": "python scripts/extract_assets.py",
+    "build": "electron-builder",
+    "build:dir": "electron-builder --dir"
   },
   "devDependencies": {
-    "electron": "^43.3.0"
+    "electron": "^43.3.0",
+    "electron-builder": "^25.1.8"
   },
   "dependencies": {
     "systeminformation": "^5.33.1"

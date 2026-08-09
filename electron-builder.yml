@@ -1,0 +1,23 @@
+appId: com.rimletter.app
+productName: RimLetter
+copyright: Copyright (c) 2026
+directories:
+  output: dist
+  buildResources: build
+files:
+  - src/**
+  - assets/**
+  - plugins/**
+  - package.json
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

@@ -1,0 +1,118 @@
+# RimLetter 边缘信使
+
+一个参考《边缘世界》(RimWorld) 右侧 Letter 信件播报系统的桌面功能性摆件。当硬件占用过高（CPU / 内存 / 磁盘 / GPU）时，信从屏幕右缘坠落滑入提醒；平时完全隐身，告警才出现。全程使用游戏解包的原始 UI 素材与配色，并支持本地 HTTP API 和手写 JS 插件扩展。
+
+## 截图
+
+告警播报（右侧信堆栈，按紧急度染色 + 全屏径向闪光 + 威胁弹跳）：
+
+![告警示例](docs/images/alert-example.png)
+
+设置窗口（完全参考环世界 UI，深灰蓝窗口 + 米色按钮，含常规 / 告警规则 / 插件管理三个页签）：
+
+![设置窗口](docs/images/settings-window.png)
+
+## 特性
+
+- 全屏透明悬浮层，平时隐身，告警才出现；鼠标默认穿透，仅信区域可交互
+- 信的滑入坠落、全屏径向闪光、威胁弹跳、标题居中于图标并允许溢出，均还原游戏原版行为
+- 五种紧急度配色（取自游戏 LetterDefs）：
+  - ThreatBig 重大威胁 - 红
+  - ThreatSmall 威胁 - 橙红
+  - NegativeEvent 负面 - 黄
+  - NeutralEvent 中性 - 灰蓝
+  - PositiveEvent 正面（恢复正常）- 蓝
+- 可扩展规则引擎：传感器 + 指标 + 比较符 + 阈值 + 持续时长 + 紧急度，含去重与恢复播报
+- 本地 HTTP API：任何程序可触发播报、读写规则（token 鉴权）
+- 插件系统：手写 JS，注册自定义传感器 / 规则 / 主动播报
+- 游戏原声音效（提取自游戏 FMOD 音频）
+- 托盘图标：单击打开设置
+
+## 运行
+
+需要 Node.js 24+ 与 Python 3（仅素材提取需要 Python）。
+
+```bash
+# 安装依赖（electron 二进制会通过 npmmirror 镜像下载）
+npm install
+
+# 启动
+npm start
+
+# 运行测试
+npm test
+
+# 提取素材（若 assets 目录缺失时运行）
+python scripts/extract_assets.py
+```
+
+首次启动后，托盘会出现 RimLetter 图标。单击打开设置窗口。
+
+## 打包安装包
+
+本地打包：
+
+```bash
+npm run build
+```
+
+产物在 `dist/` 目录（NSIS 安装程序）。GitHub Actions 已在 `.github/workflows/build.yml` 中配置自动编译，推送到仓库后自动产出 Windows 安装包（在 Actions 的 Artifacts 中下载）。
+
+## 配置
+
+配置文件位于 `%APPDATA%\rimletter\config.json`（Windows），也可以在设置窗口调整：
+
+- 轮询间隔、自动消失时长
+- 信图标大小
+- 音效开关与音量
+- 告警规则（增删改、启停）
+
+## HTTP API
+
+本地服务默认运行在 `http://127.0.0.1:17301`，仅绑定本机。所有请求需带请求头 `X-RimLetter-Token`，token 见 config.json。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | /health | 存活检查 |
+| POST | /letter | 触发播报 `{severity, title, description, sound?}` |
+| GET | /state | 各传感器实时值 |
+| GET | /rules | 读取规则 |
+| POST | /rules | 新增规则 |
+| PUT | /rules/:id | 修改规则 |
+| DELETE | /rules/:id | 删除规则 |
+| POST | /reload | 重载配置与插件 |
+
+示例：
+
+```bash
+curl -X POST http://127.0.0.1:17301/letter \
+  -H "X-RimLetter-Token: <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"severity":"ThreatSmall","title":"构建完成","description":"CI 产物已生成"}'
+```
+
+## 插件开发
+
+插件是 `%APPDATA%\rimletter\plugins\` 目录下的一个 `.js` 文件，导出 `async ({ api, logger }) => {}`。可注册自定义传感器（自动出现在规则下拉中）、注册规则、主动触发播报、订阅事件、定时任务。
+
+```js
+module.exports = async ({ api, logger }) => {
+  api.registerSensor('myApp', async () => ({ value: 42 }));
+  api.registerRule({
+    sensor: 'myApp', metric: 'value', operator: '>', threshold: 40,
+    severity: 'NegativeEvent', label: '超载', description: '...', sound: 'auto', enabled: true
+  });
+  api.letter({ severity: 'PositiveEvent', title: '你好', description: '插件主动播报' });
+  logger.info('插件已加载');
+};
+```
+
+完整 API 参考见设置窗口 - 插件管理 - 插件开发文档。
+
+## 素材说明
+
+应用使用到的纹理与音效提取自用户自有的《边缘世界》(RimWorld) 游戏安装目录（`scripts/extract_assets.py` 为提取管线）。这些素材版权归 Ludeon Studios 所有，本项目仅供学习与个人使用，请勿用于商业用途或再分发游戏原始素材。
+
+## 许可证
+
+代码部分：MIT License。游戏素材版权归 Ludeon Studios 所有（见上）。
