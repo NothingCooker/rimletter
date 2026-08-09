@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { loadPlugins } = require('../src/main/plugins');
+const { loadPlugins, normalizeConfig, getPluginConfig } = require('../src/main/plugins');
 
 function mkDir() { return fs.mkdtempSync(path.join(os.tmpdir(), 'rlp-')); }
 
@@ -42,10 +42,58 @@ test('插件抛错不崩溃，错误被记录', async () => {
   assert.equal(result[0].error, 'boom');
 });
 
+test('normalizeConfig 缺键填默认、剔除未知键', () => {
+  const schema = { fields: [{ key: 'h', label: '小时', type: 'number', default: 23 }] };
+  assert.deepEqual(normalizeConfig(schema, { extra: 1 }), { h: 23 });
+});
+
+test('normalizeConfig 各类型归一', () => {
+  const schema = { fields: [
+    { key: 'n', label: '数', type: 'number', default: 5, min: 0, max: 10 },
+    { key: 'b', label: '开', type: 'bool', default: false },
+    { key: 's', label: '选', type: 'select', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }], default: 'a' },
+    { key: 't', label: '文', type: 'text', default: 'x' },
+    { key: 'sl', label: '滑', type: 'slider', default: 50, min: 0, max: 100 }
+  ]};
+  const out = normalizeConfig(schema, { n: 99, b: 1, s: 'z', t: 'y', sl: 150 });
+  assert.deepEqual(out, { n: 10, b: true, s: 'a', t: 'y', sl: 100 });
+});
+
+test('normalizeConfig 非法 schema 抛错', () => {
+  assert.throws(() => normalizeConfig({ fields: [] }, {}), /fields 必须是非空数组/);
+  assert.throws(() => normalizeConfig({ fields: [{ key: 'x', label: 'X', type: 'color' }] }, {}), /类型不支持/);
+  assert.throws(() => normalizeConfig({ fields: [{ key: 's', label: '滑', type: 'slider' }] }, {}), /需 min\/max/);
+});
+
+test('getPluginConfig 合并默认值与存储值；无 schema 返回 null', () => {
+  const schema = { fields: [
+    { key: 'h', label: '小时', type: 'number', default: 23 },
+    { key: 'b', label: '开', type: 'bool', default: true }
+  ]};
+  assert.deepEqual(getPluginConfig(schema, { h: 22 }), { h: 22, b: true });
+  assert.deepEqual(getPluginConfig(schema, {}), { h: 23, b: true });
+  assert.equal(getPluginConfig(null, {}), null);
+});
+
+test('插件注册配置表单 schema 被记录', async () => {
+  const dir = mkDir();
+  fs.writeFileSync(path.join(dir, 'c.js'), `
+    module.exports = async ({ api }) => {
+      api.registerConfig({ fields: [{ key: 'h', label: '小时', type: 'number', default: 23 }] });
+    };
+  `);
+  const registry = { configs: {} };
+  const result = await loadPlugins({ pluginsDir: dir, apiFactory: makeApi(registry) });
+  assert.equal(result.length, 1);
+  assert.equal(registry.configs.c.fields[0].key, 'h');
+});
+
 function makeApi(registry) {
-  return () => ({
-    registerSensor(name, fn) { registry.sensors[name] = fn; },
+  return (name) => ({
+    registerSensor(n, fn) { registry.sensors[n] = fn; },
     registerRule(r) { registry.rules.push(r); },
+    registerConfig(s) { registry.configs[name] = s; },
+    getConfig() { return getPluginConfig(registry.configs[name] || null, {}); },
     letter() {}, on() {}, getState: async () => ({}), setInterval() {},
     logger: { info() {}, warn() {}, error() {} }
   });
