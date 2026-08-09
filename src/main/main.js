@@ -16,6 +16,7 @@ let configDir = null;
 let monitor = null;
 let apiServer = null;
 let registry = { sensors: {}, customRules: [] };
+let lastPluginResults = [];
 
 const ASSETS = path.join(__dirname, '..', '..', 'assets');
 
@@ -46,14 +47,19 @@ function reloadEverything() {
   config = loadConfig(configDir);
   registry = { sensors: {}, customRules: [] };
   const pluginApi = makePluginApi();
+  const disabled = new Set((config.plugins && config.plugins.disabled) || []);
   const pluginResults = loadPlugins({
     pluginsDir: path.join(configDir, 'plugins'),
-    apiFactory: () => pluginApi
+    apiFactory: () => pluginApi,
+    filter: name => !disabled.has(name)
   });
-  pluginResults.then(list => list.forEach(p => {
-    if (p.error) console.error('[plugin:' + p.name + '] load error:', p.error);
-    else console.log('[plugin:' + p.name + '] loaded');
-  })).catch(e => console.error('[plugin] load error:', e));
+  pluginResults.then(list => {
+    lastPluginResults = list;
+    list.forEach(p => {
+      if (p.error) console.error('[plugin:' + p.name + '] load error:', p.error);
+      else console.log('[plugin:' + p.name + '] loaded');
+    });
+  }).catch(e => console.error('[plugin] load error:', e));
 
   if (monitor) monitor.stop();
   // 动态 snapshot 门面：每次轮询都读取最新传感器（含插件异步注册的）
@@ -168,11 +174,38 @@ ipcMain.handle('rules:set', (e, rules) => {
 });
 ipcMain.handle('letter:test', (e, severity) => triggerLetter({ severity, title: '测试播报', description: '这是来自设置窗口的测试信' }));
 ipcMain.handle('plugins:reload', () => { reloadEverything(); return { sensors: Object.keys(registry.sensors), customRules: registry.customRules }; });
-ipcMain.handle('plugins:list', () => {
+function getPluginList() {
   const fs = require('node:fs');
   const dir = path.join(configDir, 'plugins');
   if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).filter(f => f.endsWith('.js')).map(f => ({ name: f.replace(/\.js$/, ''), file: f }));
+  const disabled = new Set((config.plugins && config.plugins.disabled) || []);
+  const loadedMap = {};
+  for (const p of lastPluginResults) loadedMap[p.name] = p;
+  return fs.readdirSync(dir).filter(f => f.endsWith('.js')).map(f => {
+    const name = f.replace(/\.js$/, '');
+    return {
+      name,
+      file: f,
+      enabled: !disabled.has(name),
+      loaded: !!(loadedMap[name] && loadedMap[name].loaded),
+      error: loadedMap[name] ? loadedMap[name].error : null
+    };
+  });
+}
+ipcMain.handle('plugins:list', () => getPluginList());
+ipcMain.handle('plugins:toggle', (e, name, enabled) => {
+  const disabled = (config.plugins && config.plugins.disabled) || [];
+  if (enabled) config.plugins.disabled = disabled.filter(n => n !== name);
+  else if (!disabled.includes(name)) config.plugins.disabled = [...disabled, name];
+  saveConfig(configDir, config);
+  reloadEverything();
+  return getPluginList();
+});
+ipcMain.handle('plugins:preview', (e, name) => {
+  const fs = require('node:fs');
+  const fp = path.join(configDir, 'plugins', name + '.js');
+  try { return { name, source: fs.readFileSync(fp, 'utf-8') }; }
+  catch { return { name, source: '', error: '无法读取插件文件' }; }
 });
 ipcMain.handle('plugins:dir', () => {
   const fs = require('node:fs');

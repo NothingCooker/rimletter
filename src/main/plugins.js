@@ -2,10 +2,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-async function loadPlugins({ pluginsDir, apiFactory }) {
+async function loadPlugins({ pluginsDir, apiFactory, filter }) {
   const results = [];
   if (!fs.existsSync(pluginsDir)) return results;
-  const files = fs.readdirSync(pluginsDir).filter(f => f.endsWith('.js'));
+  const files = fs.readdirSync(pluginsDir)
+    .filter(f => f.endsWith('.js'))
+    .filter(f => !filter || filter(path.basename(f, '.js')));
   for (const file of files) {
     const name = path.basename(file, '.js');
     const fullPath = path.join(pluginsDir, file);

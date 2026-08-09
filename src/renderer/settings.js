@@ -174,26 +174,82 @@ function sensorLabel(s) { return { cpu: 'CPU', mem: '内存', disk: '磁盘', gp
 function metricLabel(r) { const m = (SENSOR_METRICS[r.sensor] || []).find(x => x.k === r.metric); return m ? m.label : r.metric; }
 
 // ============ 插件管理 ============
+const PLUGIN_DOCS = [
+  ['api.registerSensor(name, fn)', '注册自定义传感器。fn 异步返回 { value } 或 { value, unit }，会出现在规则引擎的传感器下拉里。'],
+  ['api.registerRule(rule)', '注册规则，结构同内置规则：{sensor, metric, operator, threshold, durationMs, severity, label, description, sound, enabled}。'],
+  ['api.letter({severity, title, description, sound})', '主动触发一封播报。'],
+  ['api.on(event, handler)', '订阅事件：alert（告警）、recovered（恢复）、rule。'],
+  ['api.getState()', '读取当前全部传感器实时值（Promise）。'],
+  ['api.setInterval(fn, ms)', '定时器，应用退出自动清理。'],
+  ['logger.info/warn/error(...)', '带插件名前缀的日志。']
+];
+
 async function renderPlugins() {
   const el = document.getElementById('pane-plugins');
   el.innerHTML =
-    '<div style="font-size:12px;color:#9aa5b1;margin-bottom:8px">插件位于 userData/plugins/ 目录。手写 JS，可注册自定义传感器/规则、主动播报。</div>' +
-    '<div style="margin-bottom:10px">' +
+    '<div style="margin-bottom:8px">' +
     '<button class="rw-btn" id="plug-reload">⟳ 重新加载插件</button> ' +
-    '<button class="rw-btn" id="plug-dir">📂 打开插件目录</button></div>' +
+    '<button class="rw-btn" id="plug-dir">📂 打开插件目录</button> ' +
+    '<button class="rw-btn" id="plug-docs">📖 插件开发文档</button></div>' +
+    '<div id="plug-docs-box" style="display:none;margin-bottom:10px"></div>' +
     '<div id="plug-list" style="font-size:12px;color:#c8d0da">加载中…</div>';
+
   document.getElementById('plug-reload').addEventListener('click', async () => {
-    const r = await window.rimletter.reloadPlugins();
-    const list = document.getElementById('plug-list');
-    list.innerHTML = (r.sensors.length || r.customRules.length) ?
-      '<div>已注册传感器：' + r.sensors.join(', ') + '<br>插件规则：' + r.customRules.length + ' 条</div>' : '<div>无插件注册项</div>';
+    await window.rimletter.reloadPlugins();
+    renderPlugins();
   });
   document.getElementById('plug-dir').addEventListener('click', () => window.rimletter.openPluginsDir());
+  document.getElementById('plug-docs').addEventListener('click', () => {
+    const box = document.getElementById('plug-docs-box');
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    box.innerHTML = docsHtml();
+  });
+
   const plugs = await window.rimletter.listPlugins();
   const list = document.getElementById('plug-list');
-  list.innerHTML = plugs.length
-    ? plugs.map(p => '<div style="margin:4px 0">📄 <b>' + esc(p.name) + '</b> <span style="color:#7f8a96">(' + esc(p.file) + ')</span></div>').join('')
-    : '<div style="color:#7f8a96">暂无插件。用「打开插件目录」放置 .js 插件，再点「重新加载」。</div>';
+  if (!plugs.length) {
+    list.innerHTML = '<div style="color:#7f8a96">暂无插件。用「打开插件目录」放置 .js 插件，再点「重新加载」。</div>';
+    return;
+  }
+  list.innerHTML = '<table class="rw-rule">' +
+    '<tr><th>启用</th><th>插件</th><th>状态</th><th style="width:150px">操作</th></tr>' +
+    plugs.map(p =>
+      '<tr><td><span class="rw-cb' + (p.enabled ? ' on' : '') + '" data-toggle="' + esc(p.name) + '"></span></td>' +
+      '<td><b>' + esc(p.name) + '</b></td>' +
+      '<td>' + (p.error ? '<span style="color:#ff8888">错误: ' + esc(p.error) + '</span>' : (p.loaded ? '<span style="color:#8fce8f">已加载</span>' : '<span style="color:#c8a0a0">未加载</span>')) + '</td>' +
+      '<td><button class="rw-btn small" data-preview="' + esc(p.name) + '">预览</button></td></tr>'
+    ).join('') + '</table>' +
+    '<div id="plug-preview" class="rw-editor" style="display:none;margin-top:10px"></div>';
+
+  list.querySelectorAll('[data-toggle]').forEach(cb => cb.addEventListener('click', async () => {
+    const name = cb.dataset.toggle;
+    const nowEnabled = !cb.classList.contains('on');
+    await window.rimletter.togglePlugin(name, nowEnabled);
+    renderPlugins();
+  }));
+  list.querySelectorAll('[data-preview]').forEach(b => b.addEventListener('click', async () => {
+    const pv = document.getElementById('plug-preview');
+    const src = await window.rimletter.previewPlugin(b.dataset.preview);
+    pv.style.display = 'block';
+    pv.innerHTML = '<div style="font-size:12px;color:#e8ecf1;font-weight:600;margin-bottom:6px">📄 ' + esc(src.name) + '.js 源码</div>' +
+      '<pre style="margin:0;font-size:11px;color:#9fd8a8;background:rgb(10,13,16);padding:10px;border-radius:4px;overflow:auto;max-height:300px;white-space:pre-wrap">' + esc(src.source || src.error || '') + '</pre>';
+  }));
+}
+
+function docsHtml() {
+  return '<div class="rw-editor" style="color:#d8dee6">' +
+    '<div style="font-size:13px;color:#fff;font-weight:600;margin-bottom:8px">📖 插件开发文档</div>' +
+    '<div style="font-size:12px;color:#9aa5b1;margin-bottom:10px">插件 = plugins/ 目录下的一个 .js 文件，导出 async ({ api, logger }) => { ... }。' +
+    '启用的插件在启动和「重新加载」时执行；注册的传感器会出现在规则下拉里。</div>' +
+    PLUGIN_DOCS.map(d => '<div style="margin:6px 0"><code style="color:#9fd8a8;background:rgb(10,13,16);padding:2px 6px;border-radius:3px;font-size:11px">' + d[0] + '</code>' +
+      '<div style="color:#a8b3c0;font-size:12px;margin-top:2px">' + d[1] + '</div></div>').join('') +
+    '<pre style="margin:10px 0 0;font-size:11px;color:#9fd8a8;background:rgb(10,13,16);padding:10px;border-radius:4px;overflow:auto;white-space:pre-wrap">' +
+    'module.exports = async ({ api, logger }) => {\n' +
+    "  api.registerSensor('myApp', async () => ({ value: 42 }));\n" +
+    '  api.registerRule({ sensor: \'myApp\', metric: \'value\', operator: \'>\', threshold: 40, severity: \'NegativeEvent\', label: \'超载\', description: \'...\', sound: \'auto\', enabled: true });\n' +
+    "  api.letter({ severity: 'PositiveEvent', title: '你好', description: '插件主动播报' });\n" +
+    '  logger.info(\'插件已加载\');\n' +
+    '};</pre></div>';
 }
 
 // ============ 通用 ============

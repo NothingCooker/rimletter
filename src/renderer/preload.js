@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('rimletter', {
   testLetter: (severity) => ipcRenderer.invoke('letter:test', severity),
   reloadPlugins: () => ipcRenderer.invoke('plugins:reload'),
   listPlugins: () => ipcRenderer.invoke('plugins:list'),
+  togglePlugin: (name, enabled) => ipcRenderer.invoke('plugins:toggle', name, enabled),
+  previewPlugin: (name) => ipcRenderer.invoke('plugins:preview', name),
   openPluginsDir: () => ipcRenderer.invoke('plugins:dir'),
   getState: () => ipcRenderer.invoke('state:get'),
   closeSettings: () => ipcRenderer.invoke('settings:close'),

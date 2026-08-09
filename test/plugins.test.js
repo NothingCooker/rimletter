@@ -23,6 +23,17 @@ test('加载插件并注入 api，注册规则/传感器生效', async () => {
   assert.equal(registry.rules.length, 1);
 });
 
+test('filter 参数可跳过指定插件', async () => {
+  const dir = mkDir();
+  fs.writeFileSync(path.join(dir, 'a.js'), `module.exports = async ({ api }) => { api.registerRule({ id: 'a', label: 'A' }); };`);
+  fs.writeFileSync(path.join(dir, 'b.js'), `module.exports = async ({ api }) => { api.registerRule({ id: 'b', label: 'B' }); };`);
+  const registry = { rules: [] };
+  const result = await loadPlugins({ pluginsDir: dir, apiFactory: makeApi(registry), filter: name => name !== 'b' });
+  assert.equal(result.length, 1);
+  assert.equal(result[0].name, 'a');
+  assert.equal(registry.rules[0].id, 'a');
+});
+
 test('插件抛错不崩溃，错误被记录', async () => {
   const dir = mkDir();
   fs.writeFileSync(path.join(dir, 'bad.js'), `module.exports = async () => { throw new Error('boom'); };`);
