@@ -1,6 +1,6 @@
 {
   "name": "rimletter",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "边缘信使 - 复刻环世界右侧 Letter 播报的桌面功能性摆件",
   "author": "NothingCooker",
   "main": "src/main/main.js",

@@ -250,6 +250,11 @@ html, body {
   font-family: inherit;
   text-shadow: 0 1px 2px rgba(0, 0, 0, .75);
 }
+/* 下拉弹层：option 用深色文字，避免系统白底上白字看不清 */
+.rw-select option {
+  color: #20242a;
+  background: #ffffff;
+}
 .rw-input {
   background: rgb(10, 13, 16);
   color: #dfe6ee;
