@@ -227,7 +227,21 @@ ipcMain.handle('rules:set', (e, rules) => {
   return config.rules;
 });
 ipcMain.handle('letter:test', (e, severity) => triggerLetter({ severity, title: '测试播报', description: '这是来自设置窗口的测试信' }));
-ipcMain.handle('plugins:reload', () => { reloadEverything(); return { sensors: Object.keys(registry.sensors), customRules: registry.customRules }; });
+ipcMain.handle('plugins:reload', () => { reloadEverything(); return { sensors: Object.keys(registry.sensors), customRules: registry.customRules, configs: Object.keys(registry.pluginConfigs) }; });
+function setPluginConfig(name, values) {
+  const schema = registry.pluginConfigs[name];
+  if (!schema) return { ok: false, error: '插件无配置定义' };
+  config.pluginConfig = config.pluginConfig || {};
+  config.pluginConfig[name] = normalizeConfig(schema, values);
+  saveConfig(configDir, config);
+  const handlers = (registry.pluginConfigHandlers[name] || {})['config'] || [];
+  for (const cb of handlers) {
+    try { cb(config.pluginConfig[name]); } catch (e) { console.error('[plugin:' + name + '] config handler error:', e); }
+  }
+  send('config:changed', config);
+  return { ok: true, values: config.pluginConfig[name] };
+}
+
 function getPluginList() {
   const fs = require('node:fs');
   const dir = path.join(configDir, 'plugins');
@@ -237,16 +251,20 @@ function getPluginList() {
   for (const p of lastPluginResults) loadedMap[p.name] = p;
   return fs.readdirSync(dir).filter(f => f.endsWith('.js')).map(f => {
     const name = f.replace(/\.js$/, '');
+    const schema = registry.pluginConfigs[name] || null;
     return {
       name,
       file: f,
       enabled: !disabled.has(name),
       loaded: !!(loadedMap[name] && loadedMap[name].loaded),
-      error: loadedMap[name] ? loadedMap[name].error : null
+      error: loadedMap[name] ? loadedMap[name].error : null,
+      configSchema: schema,
+      configValues: schema ? getPluginConfig(schema, config.pluginConfig && config.pluginConfig[name]) : null
     };
   });
 }
 ipcMain.handle('plugins:list', () => getPluginList());
+ipcMain.handle('plugins:setConfig', (e, name, values) => setPluginConfig(name, values));
 ipcMain.handle('plugins:toggle', (e, name, enabled) => {
   const disabled = (config.plugins && config.plugins.disabled) || [];
   if (enabled) config.plugins.disabled = disabled.filter(n => n !== name);
