@@ -1366,7 +1366,7 @@ function openSettings() {
 
 // ---- IPC ----
 ipcMain.handle('config:get', () => config);
-ipcMain.handle('config:set', (e, patch) => { config = { ...config, ...patch }; saveConfig(configDir, config); return config; });
+ipcMain.handle('config:set', (e, patch) => { config = { ...config, ...patch }; saveConfig(configDir, config); send('config:changed', config); return config; });
 ipcMain.handle('rules:set', (e, rules) => { config.rules = rules; saveConfig(configDir, config); return config.rules; });
 ipcMain.handle('letter:test', (e, severity) => triggerLetter({ severity, title: '测试播报', description: '测试' }));
 ipcMain.handle('plugins:reload', () => { reloadEverything(); return registry; });
@@ -1416,6 +1416,7 @@ contextBridge.exposeInMainWorld('rimletter', {
   closeSettings: () => ipcRenderer.invoke('settings:close'),
   onLetter: (cb) => ipcRenderer.on('letter:new', (_e, letter) => cb(letter)),
   onOpenSettings: (cb) => ipcRenderer.on('settings:open', () => cb()),
+  onConfigChange: (cb) => ipcRenderer.on('config:changed', (_e, cfg) => cb(cfg)),
   setMouseOver: (over) => ipcRenderer.send('overlay:mouseover', over)
 });
 ```
@@ -1464,6 +1465,15 @@ git commit -m "feat: electron main process wiring services, tray, ipc"
 // src/renderer/overlay.js
 const stack = document.getElementById('stack');
 let hovered = false;
+let iconSize = 64; // 默认，可在设置中调整（config.appearance.iconSize）
+const STYLE = document.createElement('style');
+document.head.appendChild(STYLE);
+function applyIconSize(px) {
+  iconSize = px;
+  STYLE.textContent = '.letter .icon{width:' + px + 'px;height:' + Math.round(px * 50 / 64) + 'px}';
+}
+window.rimletter.getConfig().then(cfg => applyIconSize(cfg.appearance && cfg.appearance.iconSize || 64));
+window.rimletter.onConfigChange(cfg => applyIconSize(cfg.appearance && cfg.appearance.iconSize || 64));
 
 function spawnLetter(L) {
   const el = document.createElement('div');
@@ -1634,7 +1644,7 @@ async function init() {
   renderRules();
   renderPlugins();
 }
-function renderGeneral() { /* 传感器开关+阈值、轮询/自动消失滑块、音效开关/音量 —— 用 ui.css 的 .cb/.slider-wrap 渲染 */ }
+function renderGeneral() { /* 传感器开关+阈值、轮询/自动消失滑块、letter 图标大小滑块(config.appearance.iconSize, 32~128)、音效开关/音量 —— 用 ui.css 的 .cb/.slider-wrap 渲染 */ }
 function renderRules() { /* 规则表格 + 添加/编辑编辑器，保存调 window.rimletter.setRules */ }
 function renderPlugins() { /* 插件列表 + 重新加载/打开目录按钮，调 window.rimletter.reloadPlugins */ }
 function closeSettings() { window.rimletter.closeSettings(); window.close(); }
