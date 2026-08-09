@@ -1,0 +1,276 @@
+/* src/renderer/ui.css —— 环世界风格 UI + 播报动画 */
+
+/* ============ 覆盖层基础 ============ */
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+/* ============ 信堆栈 ============ */
+#stack {
+  position: fixed;
+  top: 64px;
+  right: 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 30px;
+  z-index: 10;
+}
+
+.letter {
+  position: relative;
+  pointer-events: auto;
+  animation: fall .9s cubic-bezier(.2, .8, .3, 1.15) forwards;
+  opacity: 0;
+}
+.letter .icon {
+  width: 64px;
+  height: 50px;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .5));
+  user-select: none;
+}
+/* 文字居中于图标中心、允许向两侧溢出（游戏源码：label 矩形 = 图标中心X ± 文字宽/2） */
+.letter .label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+.letter .label .bg {
+  position: absolute;
+  inset: -3px -5px;
+  background-image: url(../assets/raw/GrayTextBG.png);
+  background-size: 100% 100%;
+  opacity: .95;
+  border-radius: 2px;
+}
+.letter .label span {
+  position: relative;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, .9);
+  white-space: nowrap;
+  padding: 0 4px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .9);
+}
+
+@keyframes fall {
+  from { transform: translateY(-200px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.letter.leaving {
+  animation: bye .5s ease forwards;
+  pointer-events: none;
+}
+@keyframes bye {
+  to { opacity: 0; transform: translateY(-40px); }
+}
+/* 威胁级弹跳 */
+.letter.bounce .icon {
+  animation: fb .9s ease-in-out 15s infinite;
+}
+@keyframes fb {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(-14px); }
+}
+
+/* 全屏径向闪光 */
+.flash {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 50%;
+  width: 0;
+  height: 0;
+  animation: fl 1s ease-out forwards;
+  z-index: 5;
+}
+@keyframes fl {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(.05); }
+  30%  { opacity: .55; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* 悬停详情框 */
+.ttip {
+  position: fixed;
+  z-index: 12;
+  background: rgb(21, 25, 29);
+  border: 1px solid rgb(97, 108, 122);
+  padding: 12px 14px;
+  font-size: 12px;
+  color: #dfe6ee;
+  width: 300px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .7);
+  pointer-events: none;
+}
+.ttip b { display: block; margin-bottom: 6px; font-size: 13px; color: #fff; }
+.ttip .m { color: #9aa5b1; line-height: 1.6; font-size: 11px; }
+.ttip.hidden { display: none; }
+
+/* ============ 环世界窗口控件 ============ */
+.rw-window {
+  background: rgb(21, 25, 29);
+  border: 2px solid rgb(97, 108, 122);
+  box-shadow: 0 6px 30px rgba(0, 0, 0, .6);
+}
+.rw-titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgb(97, 108, 122);
+  padding: 10px 14px;
+}
+.rw-titlebar b { font-size: 14px; letter-spacing: .5px; color: #e8ecf1; }
+.rw-tabs {
+  display: flex;
+  border-bottom: 1px solid rgb(97, 108, 122);
+  background: rgb(26, 31, 36);
+}
+.rw-tab {
+  padding: 8px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #a8b3c0;
+  border-right: 1px solid rgb(70, 80, 92);
+  background: rgb(26, 31, 36);
+  user-select: none;
+}
+.rw-tab.on {
+  background: rgb(21, 25, 29);
+  color: #fff;
+  box-shadow: inset 0 -2px 0 rgb(120, 176, 216);
+}
+.rw-pane { display: none; padding: 14px 16px; overflow: auto; }
+.rw-pane.on { display: block; }
+
+.rw-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; }
+.rw-lbl { width: 130px; text-align: right; color: #c8d0da; flex: none; }
+.rw-sep { border-top: 1px solid rgb(97, 108, 122); margin: 12px 0; opacity: .5; }
+
+/* 米色按钮 */
+.rw-btn {
+  display: inline-block;
+  background-image: url(../assets/raw/ButtonBG.png);
+  background-size: 100% 100%;
+  padding: 7px 16px;
+  font-size: 12px;
+  color: #2a2a2a;
+  cursor: pointer;
+  text-align: center;
+  user-select: none;
+  border: none;
+  font-family: inherit;
+}
+.rw-btn:hover { background-image: url(../assets/raw/ButtonBGMouseover.png); }
+.rw-btn:active { background-image: url(../assets/raw/ButtonBGClick.png); }
+.rw-btn.small { padding: 3px 10px; font-size: 11px; }
+
+/* 复选框 */
+.rw-cb {
+  width: 26px;
+  height: 26px;
+  background-image: url(../assets/raw/CheckOff.png);
+  background-size: 100% 100%;
+  display: inline-block;
+  flex: none;
+  cursor: pointer;
+  user-select: none;
+}
+.rw-cb.on { background-image: url(../assets/raw/CheckOn.png); }
+.rw-cb.partial { background-image: url(../assets/raw/CheckPartial.png); }
+
+/* 单选 */
+.rw-radio {
+  width: 26px;
+  height: 26px;
+  background-image: url(../assets/raw/RadioButOff.png);
+  background-size: 100% 100%;
+  display: inline-block;
+  flex: none;
+  cursor: pointer;
+}
+.rw-radio.on { background-image: url(../assets/raw/RadioButOn.png); }
+
+/* 滑块 */
+.rw-slider {
+  position: relative;
+  width: 180px;
+  height: 14px;
+  background-image: url(../assets/raw/SliderRail.png);
+  background-size: 100% 100%;
+  cursor: pointer;
+  flex: none;
+}
+.rw-thumb {
+  position: absolute;
+  top: -5px;
+  width: 24px;
+  height: 24px;
+  background-image: url(../assets/raw/SliderHandle.png);
+  background-size: 100% 100%;
+  pointer-events: none;
+}
+
+/* 文字灰底 */
+.rw-gray {
+  background-image: url(../assets/raw/GrayTextBG.png);
+  background-size: 100% 100%;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, .85);
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+/* 下拉/输入 */
+.rw-select, .rw-input {
+  background-image: url(../assets/raw/ButtonBG.png);
+  background-size: 100% 100%;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: #2a2a2a;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.rw-input {
+  background: rgb(10, 13, 16);
+  color: #dfe6ee;
+  border: 1px solid rgb(97, 108, 122);
+  cursor: text;
+  width: 56px;
+}
+
+/* 紧急度色点 */
+.rw-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+/* 规则表格 */
+table.rw-rule { border-collapse: collapse; width: 100%; margin-top: 6px; }
+table.rw-rule th { font-size: 11px; color: #8a94a0; text-align: left; padding: 4px 6px; border-bottom: 1px solid rgb(70, 80, 92); font-weight: normal; }
+table.rw-rule td { padding: 5px 6px; font-size: 12px; border-bottom: 1px solid rgb(35, 42, 48); }
+
+/* 编辑器面板 */
+.rw-editor {
+  background: rgb(26, 31, 36);
+  border: 1px solid rgb(70, 80, 92);
+  margin-top: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
