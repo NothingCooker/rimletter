@@ -34,6 +34,14 @@ function spawnLetter(L) {
   spawnFlash(L, el, L.flashColor, 0.55, 0.7);
   playSound(L.sound);
 
+  // fall 动画结束后清除动画：forwards 填充会压制后续 FLIP 设置的 inline transform
+  el.addEventListener('animationend', (e) => {
+    if (e.animationName === 'fall') {
+      el.style.animation = 'none';
+      el.style.opacity = '1';
+    }
+  });
+
   // 周期性闪光（flashInterval 秒）
   const intervalId = setInterval(() => {
     if (!el.parentNode) { clearInterval(intervalId); return; }
@@ -75,10 +83,51 @@ function spawnFlash(L, el, flashColor, peakAlpha, scale) {
 
 function dismiss(el, intervalId) {
   clearInterval(intervalId);
-  el.classList.add('leaving');
-  setTimeout(() => el.remove(), 480);
   if (hovered) { hovered = false; window.rimletter.setMouseOver(false); }
   tooltip.classList.add('hidden');
+
+  // FLIP：记录其余信当前纵向位置
+  const siblings = [...stack.children].filter(x => x !== el);
+  const from = new Map(siblings.map(l => [l, l.getBoundingClientRect().top]));
+
+  // 被点掉的信立即移出布局（让缺口马上合拢），用 fixed ghost 在原位淡出
+  const rect = el.getBoundingClientRect();
+  const ghost = el.cloneNode(true);
+  ghost.classList.add('leaving');
+  ghost.style.animation = ''; // 清掉克隆自原元素的 inline animation，让 .leaving 的 bye 生效
+  ghost.style.opacity = '1';
+  ghost.style.position = 'fixed';
+  ghost.style.left = rect.left + 'px';
+  ghost.style.top = rect.top + 'px';
+  ghost.style.width = el.offsetWidth + 'px';
+  ghost.style.height = el.offsetHeight + 'px';
+  ghost.style.margin = '0';
+  ghost.style.zIndex = '20';
+  ghost.style.pointerEvents = 'none';
+  document.body.appendChild(ghost);
+  el.remove();
+  setTimeout(() => ghost.remove(), 520);
+
+  // Invert：把其余信固定回旧位置（视觉不动）
+  siblings.forEach(l => {
+    const d = from.get(l) - l.getBoundingClientRect().top;
+    if (d !== 0) l.style.transform = 'translateY(' + d + 'px)';
+  });
+
+  // Play：非线性过渡回原位 = 上移补位
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    siblings.forEach(l => {
+      if (!l.style.transform) return;
+      l.style.transition = 'transform .5s cubic-bezier(.2,.8,.3,1.15)';
+      l.style.transform = 'translateY(0)';
+      l.addEventListener('transitionend', function done(e) {
+        if (e.propertyName !== 'transform') return;
+        l.style.transition = '';
+        l.style.transform = '';
+        l.removeEventListener('transitionend', done);
+      });
+    });
+  }));
 }
 
 function showTooltip(e, L) {

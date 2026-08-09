@@ -10,7 +10,7 @@ const DEFAULT_CONFIG = {
   recoveryDismissMs: 10000,
   api: { enabled: true, port: 17301, token: 'auto' },
   appearance: { iconSize: 64 },
-  sound: { enabled: true, volume: 0.7 },
+  sound: { enabled: true, volume: 0.25 },
   update: { enabled: true },
   plugins: { disabled: ['example'] }, // example 为演示插件，默认禁用，可在设置中启用
   rules: [

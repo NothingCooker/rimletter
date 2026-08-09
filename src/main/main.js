@@ -8,6 +8,7 @@ const { formatLetter } = require('./letters');
 const { createApiServer } = require('./api');
 const { loadPlugins } = require('./plugins');
 const { createUpdater } = require('./updater');
+const { buildAutostartOptions } = require('./autostart');
 const { autoUpdater } = require('electron-updater');
 
 let mainWindow = null;
@@ -183,7 +184,13 @@ ipcMain.handle('app:info', () => ({
 }));
 ipcMain.handle('autostart:get', () => app.getLoginItemSettings().openAtLogin);
 ipcMain.handle('autostart:set', (e, enable) => {
-  app.setLoginItemSettings({ openAtLogin: !!enable });
+  // 开发模式（npm start）execPath 是裸 electron.exe，需显式传 app 路径参数，
+  // 否则开机启动的是裸 electron → 打开 Electron 欢迎页而非主程序
+  app.setLoginItemSettings(buildAutostartOptions(enable, {
+    packaged: app.isPackaged,
+    execPath: process.execPath,
+    appPath: app.getAppPath()
+  }));
   return !!enable;
 });
 ipcMain.handle('config:get', () => config);

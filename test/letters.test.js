@@ -31,3 +31,20 @@ test('formatLetter 恢复类信使用 recoveryDismissMs', () => {
   const L = formatLetter('PositiveEvent', '恢复正常', 'x', {}, 10000);
   assert.equal(L.dismissMs, 10000);
 });
+
+test('formatLetter 无自定义音效时回退到紧急度默认音效', () => {
+  // 模拟 main.js triggerLetter 恒传 { sound: sound || undefined } 的路径
+  const L = formatLetter('ThreatBig', 'CPU 占用过高', 'x', { sound: undefined });
+  assert.equal(L.sound, 'LetterArrive_BadUrgentBig');
+});
+
+test('formatLetter 的 auto 哨兵解析为紧急度默认音效', () => {
+  // 内置规则 sound 默认 'auto'，应解析成对应紧急度原声音效名，而不是当文件名播放 auto.wav
+  const L = formatLetter('PositiveEvent', '恢复正常', 'x', { sound: 'auto' });
+  assert.equal(L.sound, 'LetterArrive_Good');
+});
+
+test('formatLetter 自定义音效优先于紧急度默认', () => {
+  const L = formatLetter('ThreatSmall', 'x', 'y', { sound: 'MyCustom' });
+  assert.equal(L.sound, 'MyCustom');
+});

@@ -286,3 +286,6 @@ table.rw-rule td { padding: 5px 6px; font-size: 12px; color: #d8dee6; border-bot
   padding: 10px 12px;
   font-size: 12px;
 }
+/* 规则编辑器内：字段行较多，标签收窄 + 允许换行，避免内容出框 */
+.rw-editor .rw-row { flex-wrap: wrap; }
+.rw-editor .rw-row .rw-lbl { width: 64px; }
