@@ -9,6 +9,7 @@ const DEFAULT_CONFIG = {
   autoDismissMs: 20000,
   recoveryDismissMs: 10000,
   api: { enabled: true, port: 17301, token: 'auto' },
+  appearance: { iconSize: 64 },
   sound: { enabled: true, volume: 0.7 },
   rules: [
     { id: 'builtin-cpu', sensor: 'cpu', metric: 'load', operator: '>', threshold: 85, durationMs: 5000, severity: 'ThreatBig', label: 'CPU 占用过高', description: 'CPU 已持续 85% 以上超过 5 秒', sound: 'auto', enabled: true },
