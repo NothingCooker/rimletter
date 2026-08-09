@@ -46,17 +46,20 @@ function reloadEverything() {
   config = loadConfig(configDir);
   registry = { sensors: {}, customRules: [] };
   const pluginApi = makePluginApi();
-  loadPlugins({
+  const pluginResults = loadPlugins({
     pluginsDir: path.join(configDir, 'plugins'),
     apiFactory: () => pluginApi
-  }).forEach(p => {
+  });
+  pluginResults.then(list => list.forEach(p => {
     if (p.error) console.error('[plugin:' + p.name + '] load error:', p.error);
     else console.log('[plugin:' + p.name + '] loaded');
-  });
+  })).catch(e => console.error('[plugin] load error:', e));
 
   if (monitor) monitor.stop();
+  // 动态 snapshot 门面：每次轮询都读取最新传感器（含插件异步注册的）
+  const dynamicSensors = { snapshot: () => getSensors().snapshot() };
   monitor = createMonitor({
-    sensors: getSensors(),
+    sensors: dynamicSensors,
     pollIntervalMs: config.pollIntervalMs,
     getRules: getEffectiveRules,
     onEvent: (e) => {
