@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('rimletter', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   setConfig: (patch) => ipcRenderer.invoke('config:set', patch),
   setRules: (rules) => ipcRenderer.invoke('rules:set', rules),
+  resetConfig: () => ipcRenderer.invoke('config:reset'),
   testLetter: (severity) => ipcRenderer.invoke('letter:test', severity),
   reloadPlugins: () => ipcRenderer.invoke('plugins:reload'),
   listPlugins: () => ipcRenderer.invoke('plugins:list'),

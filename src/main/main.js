@@ -144,6 +144,14 @@ ipcMain.handle('config:set', (e, patch) => {
   send('config:changed', config);
   return config;
 });
+ipcMain.handle('config:reset', () => {
+  const { DEFAULT_CONFIG } = require('./config');
+  config = { ...JSON.parse(JSON.stringify(DEFAULT_CONFIG)), api: config.api }; // 保留已生成的 token
+  saveConfig(configDir, config);
+  reloadEverything();
+  send('config:changed', config);
+  return config;
+});
 ipcMain.handle('rules:set', (e, rules) => {
   config.rules = rules;
   saveConfig(configDir, config);

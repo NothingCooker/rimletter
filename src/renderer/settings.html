@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>RimLetter 设置</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  html, body { background: rgb(21, 25, 29); overflow: hidden; }
+  body { height: 100vh; box-sizing: border-box; }
+  #app { display: flex; flex-direction: column; height: 100%; }
+  .body { flex: 1; overflow: auto; }
+  .foot { display: flex; gap: 10px; padding: 10px 14px; border-top: 1px solid rgb(97, 108, 122); }
+  .grow { flex: 1; }
+</style>
+</head>
+<body>
+<div id="app" class="rw-window">
+  <div class="rw-titlebar">
+    <b>RimLetter 设置</b>
+    <button class="rw-btn small" onclick="closeSettings()">✕</button>
+  </div>
+  <div class="rw-tabs">
+    <span class="rw-tab on" data-tab="general" onclick="switchTab('general')">⚙ 常规设置</span>
+    <span class="rw-tab" data-tab="rules" onclick="switchTab('rules')">📜 告警规则</span>
+    <span class="rw-tab" data-tab="plugins" onclick="switchTab('plugins')">🧩 插件管理</span>
+  </div>
+  <div class="body">
+    <div id="pane-general" class="rw-pane on"></div>
+    <div id="pane-rules" class="rw-pane"></div>
+    <div id="pane-plugins" class="rw-pane"></div>
+  </div>
+  <div class="foot">
+    <span class="grow"></span>
+    <button class="rw-btn" onclick="runTest()">测试播报</button>
+    <button class="rw-btn" onclick="restoreDefaults()">恢复默认</button>
+  </div>
+</div>
+<script src="settings.js"></script>
+</body>
+</html>
