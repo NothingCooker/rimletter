@@ -19,5 +19,9 @@ contextBridge.exposeInMainWorld('rimletter', {
   onLetter: (cb) => ipcRenderer.on('letter:new', (_e, letter) => cb(letter)),
   onOpenSettings: (cb) => ipcRenderer.on('settings:open', () => cb()),
   onConfigChange: (cb) => ipcRenderer.on('config:changed', (_e, cfg) => cb(cfg)),
-  setMouseOver: (over) => ipcRenderer.send('overlay:mouseover', over)
+  setMouseOver: (over) => ipcRenderer.send('overlay:mouseover', over),
+  getUpdateState: () => ipcRenderer.invoke('update:state'),
+  checkForUpdate: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdateStatus: (cb) => ipcRenderer.on('update:status', (_e, st) => cb(st))
 });

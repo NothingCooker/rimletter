@@ -7,6 +7,8 @@ const { createMonitor } = require('./monitor');
 const { formatLetter } = require('./letters');
 const { createApiServer } = require('./api');
 const { loadPlugins } = require('./plugins');
+const { createUpdater } = require('./updater');
+const { autoUpdater } = require('electron-updater');
 
 let mainWindow = null;
 let settingsWin = null;
@@ -17,11 +19,16 @@ let monitor = null;
 let apiServer = null;
 let registry = { sensors: {}, customRules: [] };
 let lastPluginResults = [];
+let updater = null;
 
 const ASSETS = path.join(__dirname, '..', '..', 'assets');
 
 function send(channel, payload) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
+}
+
+function sendToSettings(channel, payload) {
+  if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send(channel, payload);
 }
 
 function getEffectiveRules() {
@@ -92,6 +99,22 @@ function makePluginApi() {
     setInterval(fn, ms) { return setInterval(fn, ms); },
     logger: { info: (...a) => console.log('[plugin]', ...a), warn: (...a) => console.warn('[plugin]', ...a), error: (...a) => console.error('[plugin]', ...a) }
   };
+}
+
+function initUpdater() {
+  if (!app.isPackaged) autoUpdater.forceDevUpdateConfig = true; // dev 模式用 dev-app-update.yml
+  updater = createUpdater({
+    autoUpdater,
+    isEnabled: () => !!(config.update && config.update.enabled),
+    onStatus: (st) => sendToSettings('update:status', st),
+    onDownloaded: () => triggerLetter({
+      severity: 'NeutralEvent',
+      title: 'RimLetter 新版本已下载',
+      description: '重启应用后自动安装；也可在设置 → 常规 → 点「立即重启安装」。'
+    })
+  });
+  updater.init();
+  updater.scheduleInitialCheck();
 }
 
 function createWindow() {
@@ -230,6 +253,9 @@ ipcMain.handle('plugins:dir', () => {
 ipcMain.handle('state:get', async () => { try { return await getSensors().snapshot(); } catch { return {}; } });
 ipcMain.handle('settings:close', () => { if (settingsWin) settingsWin.close(); });
 ipcMain.on('overlay:mouseover', (e, over) => { if (mainWindow) mainWindow.setIgnoreMouseEvents(!over, { forward: true }); });
+ipcMain.handle('update:state', () => updater ? updater.getState() : { code: 'idle' });
+ipcMain.handle('update:check', () => updater ? updater.checkNow() : null);
+ipcMain.handle('update:install', () => { if (updater) updater.quitAndInstall(); return true; });
 
 app.whenReady().then(() => {
   configDir = app.getPath('userData');
@@ -237,6 +263,7 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   reloadEverything();
+  initUpdater();
 
   if (config.api.enabled) {
     apiServer = createApiServer({
