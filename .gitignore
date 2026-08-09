@@ -1,0 +1,6 @@
+node_modules/
+assets/raw/
+assets/letter/
+assets/sounds/
+dist/
+*.log

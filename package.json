@@ -1,0 +1,17 @@
+{
+  "name": "rimletter",
+  "version": "0.1.0",
+  "description": "边缘信使 - 复刻环世界右侧 Letter 播报的桌面功能性摆件",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/",
+    "extract": "python scripts/extract_assets.py"
+  },
+  "devDependencies": {
+    "electron": "^43.3.0"
+  },
+  "dependencies": {
+    "systeminformation": "^5.33.1"
+  }
+}
