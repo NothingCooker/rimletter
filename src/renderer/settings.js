@@ -264,14 +264,16 @@ async function renderPlugins() {
     return;
   }
   list.innerHTML = '<table class="rw-rule">' +
-    '<tr><th>启用</th><th>插件</th><th>状态</th><th style="width:150px">操作</th></tr>' +
+    '<tr><th>启用</th><th>插件</th><th>状态</th><th style="width:190px">操作</th></tr>' +
     plugs.map(p =>
       '<tr><td><span class="rw-cb' + (p.enabled ? ' on' : '') + '" data-toggle="' + esc(p.name) + '"></span></td>' +
       '<td><b>' + esc(p.name) + '</b></td>' +
       '<td>' + (p.error ? '<span style="color:#ff8888">错误: ' + esc(p.error) + '</span>' : (p.loaded ? '<span style="color:#8fce8f">已加载</span>' : '<span style="color:#c8a0a0">未加载</span>')) + '</td>' +
-      '<td><button class="rw-btn small" data-preview="' + esc(p.name) + '">预览</button></td></tr>'
+      '<td><button class="rw-btn small" data-preview="' + esc(p.name) + '">预览</button>' +
+      (p.configSchema ? ' <button class="rw-btn small" data-config="' + esc(p.name) + '">配置</button>' : '') + '</td></tr>'
     ).join('') + '</table>' +
-    '<div id="plug-preview" class="rw-editor" style="display:none;margin-top:10px"></div>';
+    '<div id="plug-preview" class="rw-editor" style="display:none;margin-top:10px"></div>' +
+    '<div id="plug-config" class="rw-editor" style="display:none;margin-top:10px"></div>';
 
   list.querySelectorAll('[data-toggle]').forEach(cb => cb.addEventListener('click', async () => {
     const name = cb.dataset.toggle;
@@ -280,12 +282,105 @@ async function renderPlugins() {
     renderPlugins();
   }));
   list.querySelectorAll('[data-preview]').forEach(b => b.addEventListener('click', async () => {
+    document.getElementById('plug-config').style.display = 'none';
     const pv = document.getElementById('plug-preview');
     const src = await window.rimletter.previewPlugin(b.dataset.preview);
     pv.style.display = 'block';
     pv.innerHTML = '<div style="font-size:12px;color:#e8ecf1;font-weight:600;margin-bottom:6px">' + esc(src.name) + '.js 源码</div>' +
       '<pre style="margin:0;font-size:11px;color:#9fd8a8;background:rgb(10,13,16);padding:10px;border-radius:4px;overflow:auto;max-height:300px;white-space:pre-wrap">' + esc(src.source || src.error || '') + '</pre>';
   }));
+  list.querySelectorAll('[data-config]').forEach(b => b.addEventListener('click', () => {
+    document.getElementById('plug-preview').style.display = 'none';
+    const p = plugs.find(x => x.name === b.dataset.config);
+    if (p) renderPluginConfigForm(p);
+  }));
+}
+
+function renderPluginConfigForm(plugin) {
+  const schema = plugin.configSchema;
+  const fields = schema.fields;
+  const values = {};
+  fields.forEach(f => { values[f.key] = (plugin.configValues && plugin.configValues[f.key] !== undefined) ? plugin.configValues[f.key] : f.default; });
+  const box = document.getElementById('plug-config');
+  box.style.display = 'block';
+  let html = '<div style="font-size:12px;color:#e8ecf1;font-weight:600;margin-bottom:6px">⚙ ' + esc(schema.title || plugin.name) + ' 配置</div>';
+  fields.forEach((f, i) => {
+    const cur = values[f.key];
+    if (f.type === 'bool') {
+      html += '<div class="rw-row"><span class="rw-lbl">' + esc(f.label) + '</span>' +
+        '<span class="rw-cb' + (cur ? ' on' : '') + '" data-i="' + i + '" data-role="bool"></span>' +
+        '<span class="rw-gray" data-i="' + i + '" data-role="bool-label">' + (cur ? '开启' : '关闭') + '</span></div>';
+    } else if (f.type === 'select') {
+      html += '<div class="rw-row"><span class="rw-lbl">' + esc(f.label) + '</span>' +
+        '<select class="rw-select" data-i="' + i + '" data-role="select">' +
+        f.options.map(o => '<option value="' + esc(o.value) + '"' + (o.value === cur ? ' selected' : '') + '>' + esc(o.label) + '</option>').join('') +
+        '</select></div>';
+    } else if (f.type === 'text') {
+      html += '<div class="rw-row"><span class="rw-lbl">' + esc(f.label) + '</span>' +
+        '<input class="rw-input" data-i="' + i + '" data-role="text" value="' + esc(cur) + '"' + (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '') + '></div>';
+    } else if (f.type === 'number') {
+      html += '<div class="rw-row"><span class="rw-lbl">' + esc(f.label) + '</span>' +
+        '<input class="rw-input" data-i="' + i + '" data-role="number" value="' + esc(cur) + '" style="width:80px"' +
+        (typeof f.min === 'number' ? ' min="' + f.min + '"' : '') + (typeof f.max === 'number' ? ' max="' + f.max + '"' : '') + '></div>';
+    } else if (f.type === 'slider') {
+      const min = f.min, max = f.max;
+      const step = f.step || (max - min) / 100;
+      const pct = Math.max(0, Math.min(1, (cur - min) / (max - min))) * 100;
+      html += '<div class="rw-row"><span class="rw-lbl">' + esc(f.label) + '</span>' +
+        '<div class="rw-slider" data-i="' + i + '" data-role="slider" data-min="' + min + '" data-max="' + max + '" data-step="' + step + '">' +
+        '<div class="rw-thumb" style="left:' + pct + '%"></div></div>' +
+        '<span class="rw-gray" data-i="' + i + '" data-role="slider-label">' + cur + (f.unit ? ' ' + f.unit : '') + '</span></div>';
+    }
+  });
+  html += '<div class="rw-row" style="margin-top:10px;gap:10px">' +
+    '<button class="rw-btn" id="cfg-save">保存</button>' +
+    '<button class="rw-btn" id="cfg-cancel">取消</button></div>';
+  box.innerHTML = html;
+
+  function elByRole(role, i) { return box.querySelector('[data-role="' + role + '"][data-i="' + i + '"]'); }
+
+  fields.forEach((f, i) => {
+    if (f.type === 'bool') {
+      elByRole('bool', i).addEventListener('click', function () {
+        values[f.key] = !values[f.key];
+        this.classList.toggle('on', values[f.key]);
+        elByRole('bool-label', i).textContent = values[f.key] ? '开启' : '关闭';
+      });
+    } else if (f.type === 'select') {
+      elByRole('select', i).addEventListener('change', e => { values[f.key] = e.target.value; });
+    } else if (f.type === 'text') {
+      elByRole('text', i).addEventListener('change', e => { values[f.key] = e.target.value; });
+    } else if (f.type === 'number') {
+      elByRole('number', i).addEventListener('change', e => { values[f.key] = Number(e.target.value); });
+    } else if (f.type === 'slider') {
+      const slider = elByRole('slider', i);
+      const thumb = slider.querySelector('.rw-thumb');
+      const min = Number(slider.dataset.min), max = Number(slider.dataset.max), step = Number(slider.dataset.step);
+      const label = elByRole('slider-label', i);
+      function setFromClientX(x) {
+        const rect = slider.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (x - rect.left) / rect.width));
+        thumb.style.left = (pct * 100) + '%';
+        const raw = min + pct * (max - min);
+        const value = step ? Math.round(raw / step) * step : raw;
+        values[f.key] = value;
+        label.textContent = value + (f.unit ? ' ' + f.unit : '');
+      }
+      slider.addEventListener('mousedown', e => {
+        setFromClientX(e.clientX);
+        const move = ev => setFromClientX(ev.clientX);
+        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+      });
+    }
+  });
+
+  document.getElementById('cfg-save').addEventListener('click', async () => {
+    await window.rimletter.setPluginConfig(plugin.name, values);
+    renderPlugins();
+  });
+  document.getElementById('cfg-cancel').addEventListener('click', () => renderPlugins());
 }
 
 // ============ 关于 ============
