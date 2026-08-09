@@ -64,7 +64,15 @@ function renderGeneral() {
     '<div class="rw-row"><span class="rw-lbl">音量</span>' +
       '<div class="rw-slider" data-target="sound.volume" data-min="0" data-max="1" data-step="0.05">' +
         '<div class="rw-thumb" style="left:' + (config.sound.volume * 100) + '%"></div></div>' +
-      '<span class="rw-gray" id="val-sound.volume">' + Math.round(config.sound.volume * 100) + '%</span></div>';
+      '<span class="rw-gray" id="val-sound.volume">' + Math.round(config.sound.volume * 100) + '%</span></div>' +
+    '<div class="rw-sep"></div>' +
+    '<div class="rw-row"><span class="rw-lbl">自动更新</span>' +
+      '<span class="rw-cb' + (config.update.enabled ? ' on' : '') + '" data-toggle="update.enabled"></span>' +
+      '<span class="rw-gray">' + (config.update.enabled ? '开启' : '关闭') + '</span></div>' +
+    '<div class="rw-row"><span class="rw-lbl">更新状态</span>' +
+      '<span class="rw-gray" id="update-status">…</span>' +
+      '<button class="rw-btn" id="update-check-btn">立即检查</button>' +
+      '<button class="rw-btn" id="update-install-btn" style="display:none">立即重启安装</button></div>';
   bindSliders(el);
   el.querySelectorAll('[data-toggle]').forEach(cb => cb.addEventListener('click', () => {
     const path = cb.dataset.toggle;
@@ -74,6 +82,32 @@ function renderGeneral() {
     cb.classList.toggle('on', !cur);
     cb.nextElementSibling.textContent = !cur ? '开启' : '关闭';
   }));
+
+  // 自动更新状态与按钮
+  const statusEl = document.getElementById('update-status');
+  const installBtn = document.getElementById('update-install-btn');
+  document.getElementById('update-check-btn').addEventListener('click', async () => {
+    await window.rimletter.checkForUpdate();
+    window.rimletter.getUpdateState().then(showUpdateStatus);
+  });
+  installBtn.addEventListener('click', () => window.rimletter.installUpdate());
+  window.rimletter.getUpdateState().then(showUpdateStatus);
+  window.rimletter.onUpdateStatus(showUpdateStatus);
+  function showUpdateStatus(st) {
+    if (!statusEl) return;
+    const map = {
+      idle: '未检查',
+      checking: '正在检查更新…',
+      uptodate: '已是最新版本',
+      'update-available': '发现新版本 v' + (st.version || '?') + '，正在下载…',
+      downloading: '正在下载…',
+      downloaded: '新版本 v' + (st.version || '?') + ' 已下载，重启后安装',
+      disabled: '自动更新已关闭',
+      error: '检查失败：' + (st.error || '未知错误')
+    };
+    statusEl.textContent = map[st.code] || st.code;
+    installBtn.style.display = (st.code === 'downloaded') ? '' : 'none';
+  }
 
   // 开机自启开关
   const autoCb = document.getElementById('autostart-cb');
