@@ -53,6 +53,9 @@ function renderGeneral() {
       '<div class="rw-slider" data-target="appearance.iconSize" data-min="32" data-max="128" data-step="4">' +
         '<div class="rw-thumb" style="left:' + iconPct + '%"></div></div>' +
       '<span class="rw-gray" id="val-appearance.iconSize">' + (config.appearance && config.appearance.iconSize || 64) + ' px</span></div>' +
+    '<div class="rw-row"><span class="rw-lbl">开机自启</span>' +
+      '<span class="rw-cb" id="autostart-cb"></span>' +
+      '<span class="rw-gray" id="autostart-label">…</span></div>' +
     '<div class="rw-sep"></div>' +
     '<div class="rw-row"><span class="rw-lbl">音效</span>' +
       '<span class="rw-cb' + (config.sound.enabled ? ' on' : '') + '" data-toggle="sound.enabled"></span>' +
@@ -70,6 +73,20 @@ function renderGeneral() {
     cb.classList.toggle('on', !cur);
     cb.nextElementSibling.textContent = !cur ? '开启' : '关闭';
   }));
+
+  // 开机自启开关
+  const autoCb = document.getElementById('autostart-cb');
+  const autoLabel = document.getElementById('autostart-label');
+  window.rimletter.getAutostart().then(on => {
+    autoCb.classList.toggle('on', on);
+    autoLabel.textContent = on ? '开启（登录 Windows 时自动启动）' : '关闭';
+  });
+  autoCb.addEventListener('click', async () => {
+    const on = !autoCb.classList.contains('on');
+    const ok = await window.rimletter.setAutostart(on);
+    autoCb.classList.toggle('on', ok);
+    autoLabel.textContent = ok ? '开启（登录 Windows 时自动启动）' : '关闭';
+  });
 }
 
 function sliderRow(label, key, value, min, max, unit) {

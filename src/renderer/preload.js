@@ -2,6 +2,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('rimletter', {
   getConfig: () => ipcRenderer.invoke('config:get'),
+  getAutostart: () => ipcRenderer.invoke('autostart:get'),
+  setAutostart: (enable) => ipcRenderer.invoke('autostart:set', enable),
   setConfig: (patch) => ipcRenderer.invoke('config:set', patch),
   setRules: (rules) => ipcRenderer.invoke('rules:set', rules),
   resetConfig: () => ipcRenderer.invoke('config:reset'),

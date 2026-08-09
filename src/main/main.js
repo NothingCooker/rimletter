@@ -151,6 +151,11 @@ function createTray() {
 }
 
 // ---- IPC ----
+ipcMain.handle('autostart:get', () => app.getLoginItemSettings().openAtLogin);
+ipcMain.handle('autostart:set', (e, enable) => {
+  app.setLoginItemSettings({ openAtLogin: !!enable });
+  return !!enable;
+});
 ipcMain.handle('config:get', () => config);
 ipcMain.handle('config:set', (e, patch) => {
   config = { ...config, ...patch };
