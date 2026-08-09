@@ -1,6 +1,8 @@
 appId: com.rimletter.app
 productName: RimLetter
 copyright: Copyright (c) 2026
+publish:
+  - provider: github
 directories:
   output: dist
   buildResources: build
