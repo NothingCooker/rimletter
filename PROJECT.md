@@ -11,6 +11,8 @@
 - **默认分支**：master
 - **版本发布**：GitHub Releases（草稿/正式，见第 10 节）
 - **自动构建**：GitHub Actions
+- **官方插件仓库**：https://github.com/NothingCooker/rimletter-official-plugins （公开，main 分支；独立 git 仓库）
+- **官方插件本地目录**：`D:\claudeswork\official-plugin`（与主仓库平级，独立版本管理）
 
 ## 3. 技术栈
 
