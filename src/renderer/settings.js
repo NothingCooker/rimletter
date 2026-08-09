@@ -27,10 +27,17 @@ function closeSettings() { window.rimletter.closeSettings(); }
 window.closeSettings = closeSettings;
 
 async function init() {
-  config = await window.rimletter.getConfig();
-  renderGeneral();
-  renderRules();
-  renderPlugins();
+  try {
+    if (!window.rimletter) throw new Error('preload 未注入 window.rimletter（检查 preload.js 路径）');
+    config = await window.rimletter.getConfig();
+    renderGeneral();
+    renderRules();
+    renderPlugins();
+  } catch (e) {
+    const pane = document.getElementById('pane-general');
+    if (pane) pane.innerHTML = '<div style="color:#ff8888;font-size:12px">初始化出错：' + esc(e.message || e) + '</div>';
+    throw e;
+  }
 }
 init();
 
