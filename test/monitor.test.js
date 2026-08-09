@@ -14,12 +14,15 @@ test('tick 一次：触发告警并回调 onEvent', async () => {
 });
 
 test('tick 恢复事件含 recovery', async () => {
-  const sensors = { snapshot: async () => ({ cpu: { load: 10 }, mem: { usedPct: 10 }, disk: [], gpu: {} }) };
+  let high = true; // 先高后低：第一次 tick 告警，第二次恢复
+  const sensors = { snapshot: async () => ({ cpu: { load: high ? 99 : 10 }, mem: { usedPct: 10 }, disk: [], gpu: {} }) };
   const rules = [{ id: 'r1', sensor: 'cpu', metric: 'load', operator: '>', threshold: 85, durationMs: 0, severity: 'ThreatBig', label: 'CPU', description: 'x', sound: 'auto', enabled: true }];
   const events = [];
   const monitor = createMonitor({ sensors, rules, onEvent: e => events.push(e) });
   await monitor.tick(); // alert
+  high = false;
   await monitor.tick(); // recovery
+  assert.equal(events.filter(e => e.type === 'alert').length, 1);
   assert.equal(events.filter(e => e.type === 'recovery').length, 1);
 });
 
