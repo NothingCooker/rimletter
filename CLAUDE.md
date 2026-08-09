@@ -23,8 +23,20 @@ src/renderer/           覆盖层 + 设置窗口 + 环世界样式
 scripts/extract_assets.py  素材提取管线
 ```
 
+## Git 与仓库
+- 远程仓库：https://github.com/NothingCooker/rimletter （公开，master 分支）
+- GitHub CLI：`C:\Program Files\GitHub CLI\gh.exe`（PATH 未刷新，需全路径）
+- 网络（dev-sidecar 代理）：Windows 系统代理 http=127.0.0.1:31180 / https=127.0.0.1:31181
+- git 已配置：`http.proxy=127.0.0.1:31180`、`https.proxy=127.0.0.1:31181`、`http.sslBackend=schannel`（信任 dev-sidecar 的 MITM 证书）
+- 推送需带代理：`HTTPS_PROXY=http://127.0.0.1:31181 HTTP_PROXY=http://127.0.0.1:31180 git push`
+- gh 调用同样需带 HTTPS_PROXY
+
+## 构建
+- 本地 `npm run build` 可能因 dev-sidecar 代理干扰 app-builder（Go 二进制不信任 MITM 证书）而失败（`ERR_ELECTRON_BUILDER_CANNOT_EXECUTE`）
+- **CI 构建不受影响**：GitHub Actions（.github/workflows/build.yml）在 push 到 master 时自动编译，产物在 Actions Artifacts 下载
+- `.npmrc` 只保留 `electron_mirror`（国内镜像），无 skip-binary 配置
+
 ## 已知注意点
-- `.npmrc` 设 `electron_skip_binary_download=1` + 国内镜像，二进制需手动放到 node_modules/electron/dist
 - GPU 温度依赖显卡驱动，读不到时优雅返回空（不报错）
 - 游戏音频是 FMOD .fsb，用 UnityPy `samples` 解码为 WAV 才可播
 
