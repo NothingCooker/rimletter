@@ -7,7 +7,7 @@
 - ✅ 应用可运行：`npm start`（透明覆盖层 + 托盘 + HTTP API + 插件系统）
 - ✅ 素材已提取：`assets/raw/`(22 纹理)、`assets/letter/`(5 染色信)、`assets/sounds/`(6 游戏原声 WAV)
 - ✅ 本地 API：http://127.0.0.1:17301（token 见 `%APPDATA%\rimletter\config.json`）
-- ✅ 插件：userData/plugins/ 放 .js 即加载（示例见项目 `plugins/example.js`）
+- ✅ 插件：userData/plugins/ 放 .js 即加载；插件管理页支持文档/预览/启用禁用；example 默认禁用
 - ⏳ 待用户视觉确认：信的滑入/闪光/弹跳/文字居中观感
 
 ## 代码结构

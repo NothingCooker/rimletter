@@ -1,5 +1,6 @@
 // plugins/example.js —— 示例插件：注册自定义传感器 + 规则 + 主动播报
-// 把此文件复制到 userData/plugins/ 目录（设置窗口「打开插件目录」可直达）即可生效。
+// 把此文件复制到 userData/plugins/ 目录（设置窗口「打开插件目录」可直达）。
+// 默认禁用（config.plugins.disabled 含 example），需在 设置→插件管理 中启用。
 module.exports = async ({ api, logger }) => {
   // 1) 注册自定义传感器：返回 { value }，可被规则引擎引用
   api.registerSensor('clock', async () => ({ value: new Date().getHours() }));
