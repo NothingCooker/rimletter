@@ -178,14 +178,28 @@ API：
 | 方法 | 说明 |
 |---|---|
 | api.registerSensor(name, fn) | 注册自定义传感器，fn 返回 `{value}`，自动进规则下拉 |
-| api.registerRule(rule) | 注册规则（结构同内置规则） |
+| api.registerRule(rule) | 注册规则（结构同内置规则）；按 id 去重，可安全重复注册 |
 | api.letter({severity, title, description, sound}) | 主动触发播报 |
-| api.on(event, handler) | 订阅事件（alert/recovered/rule） |
+| api.registerConfig({title, fields}) | 声明配置表单（text/number/bool/select/slider 5 种字段），设置→插件管理内展开编辑 |
+| api.getConfig() | 读取当前插件配置（默认值已合并） |
+| api.on(event, handler) | 订阅事件（alert/recovered/rule/`config`；`config` 在配置变更时触发） |
 | api.getState() | 读取当前全部传感器值 |
 | api.setInterval(fn, ms) | 定时器（应用退出自动清理） |
 | logger.info/warn/error(...) | 带插件名前缀的日志 |
 
-完整 API 参考在设置窗 → 插件管理 → 插件开发文档。插件管理页支持：文档/源码预览/启用禁用。`example` 插件默认禁用。
+`registerConfig` 示例（配置保存在 config.json 的 `pluginConfig.<插件名>` 命名空间）：
+```js
+api.registerConfig({ title: '深夜提醒', fields: [
+  { key: 'hour', label: '提醒小时', type: 'slider', default: 23, min: 0, max: 23, step: 1, unit: '点' },
+  { key: 'enabled', label: '启用', type: 'bool', default: true },
+  { key: 'mode', label: '方式', type: 'select', options: [{ value: 'a', label: 'A' }], default: 'a' },
+  { key: 'note', label: '说明', type: 'text', default: '' }
+]});
+const cfg = api.getConfig();
+api.on('config', next => { /* 配置变更时重新应用 */ });
+```
+
+完整 API 参考在设置窗 → 插件管理 → 插件开发文档。插件管理页支持：文档/源码预览/配置表单/启用禁用。`example` 插件默认禁用。
 
 ## 10. CI/CD 与发布
 

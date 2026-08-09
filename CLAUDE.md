@@ -16,6 +16,7 @@
 - ✅ 默认音效音量 0.25；规则编辑器第一行不再出框（标签收窄 + 允许换行，`src/renderer/ui.css`）
 - ✅ 开机自启开发模式修复：`npm start` 下显式传 app 路径，避免启动裸 electron（`src/main/autostart.js`）
 - ✅ 用户视觉确认通过：信滑入/闪光/弹跳/文字观感、补位动画、设置页自动更新行
+- ✅ 插件配置界面：插件可声明式注册配置表单（registerConfig/getConfig/on('config')，text/number/bool/select/slider 5 种字段），设置→插件管理内展开编辑，持久化到 config.json 的 pluginConfig 命名空间
 
 ## 代码结构
 ```
@@ -27,7 +28,7 @@ src/main/rules.js       规则引擎（纯函数，状态机/去重/恢复）
 src/main/sensors.js     传感器（systeminformation，可注入 mock）
 src/main/monitor.js     轮询服务（动态 snapshot 门面）
 src/main/api.js         本地 HTTP API（token 鉴权）
-src/main/plugins.js     插件加载器（注入 {api, logger}）
+src/main/plugins.js     插件加载器 + 配置纯函数（normalizeConfig/getPluginConfig）
 src/main/updater.js     自动更新状态机（electron-updater 包装）
 src/main/autostart.js   开机自启登录项参数（纯函数）
 src/renderer/           覆盖层 + 设置窗口 + 环世界样式
