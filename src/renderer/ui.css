@@ -49,7 +49,7 @@ html, body {
 .letter .label .bg {
   position: absolute;
   inset: -3px -5px;
-  background-image: url(../assets/raw/GrayTextBG.png);
+  background-image: url(../../assets/raw/GrayTextBG.png);
   background-size: 100% 100%;
   opacity: .95;
   border-radius: 2px;
@@ -160,7 +160,7 @@ html, body {
 /* 米色按钮 */
 .rw-btn {
   display: inline-block;
-  background-image: url(../assets/raw/ButtonBG.png);
+  background-image: url(../../assets/raw/ButtonBG.png);
   background-size: 100% 100%;
   padding: 7px 16px;
   font-size: 12px;
@@ -171,42 +171,42 @@ html, body {
   border: none;
   font-family: inherit;
 }
-.rw-btn:hover { background-image: url(../assets/raw/ButtonBGMouseover.png); }
-.rw-btn:active { background-image: url(../assets/raw/ButtonBGClick.png); }
+.rw-btn:hover { background-image: url(../../assets/raw/ButtonBGMouseover.png); }
+.rw-btn:active { background-image: url(../../assets/raw/ButtonBGClick.png); }
 .rw-btn.small { padding: 3px 10px; font-size: 11px; }
 
 /* 复选框 */
 .rw-cb {
   width: 26px;
   height: 26px;
-  background-image: url(../assets/raw/CheckOff.png);
+  background-image: url(../../assets/raw/CheckOff.png);
   background-size: 100% 100%;
   display: inline-block;
   flex: none;
   cursor: pointer;
   user-select: none;
 }
-.rw-cb.on { background-image: url(../assets/raw/CheckOn.png); }
-.rw-cb.partial { background-image: url(../assets/raw/CheckPartial.png); }
+.rw-cb.on { background-image: url(../../assets/raw/CheckOn.png); }
+.rw-cb.partial { background-image: url(../../assets/raw/CheckPartial.png); }
 
 /* 单选 */
 .rw-radio {
   width: 26px;
   height: 26px;
-  background-image: url(../assets/raw/RadioButOff.png);
+  background-image: url(../../assets/raw/RadioButOff.png);
   background-size: 100% 100%;
   display: inline-block;
   flex: none;
   cursor: pointer;
 }
-.rw-radio.on { background-image: url(../assets/raw/RadioButOn.png); }
+.rw-radio.on { background-image: url(../../assets/raw/RadioButOn.png); }
 
 /* 滑块 */
 .rw-slider {
   position: relative;
   width: 180px;
   height: 14px;
-  background-image: url(../assets/raw/SliderRail.png);
+  background-image: url(../../assets/raw/SliderRail.png);
   background-size: 100% 100%;
   cursor: pointer;
   flex: none;
@@ -216,14 +216,14 @@ html, body {
   top: -5px;
   width: 24px;
   height: 24px;
-  background-image: url(../assets/raw/SliderHandle.png);
+  background-image: url(../../assets/raw/SliderHandle.png);
   background-size: 100% 100%;
   pointer-events: none;
 }
 
 /* 文字灰底 */
 .rw-gray {
-  background-image: url(../assets/raw/GrayTextBG.png);
+  background-image: url(../../assets/raw/GrayTextBG.png);
   background-size: 100% 100%;
   padding: 3px 10px;
   font-size: 12px;
@@ -234,7 +234,7 @@ html, body {
 
 /* 下拉/输入 */
 .rw-select, .rw-input {
-  background-image: url(../assets/raw/ButtonBG.png);
+  background-image: url(../../assets/raw/ButtonBG.png);
   background-size: 100% 100%;
   padding: 3px 8px;
   font-size: 11px;

@@ -15,7 +15,7 @@ function applyIconSize(px) {
 function playSound(name) {
   if (!config.sound || config.sound.enabled === false) return;
   if (!name) return;
-  const audio = new Audio('../assets/sounds/' + name + '.wav');
+  const audio = new Audio('../../assets/sounds/' + name + '.wav');
   audio.volume = (config.sound.volume != null ? config.sound.volume : 0.7);
   audio.play().catch(() => { /* 音效缺失或不可用则静音 */ });
 }
@@ -24,7 +24,7 @@ function spawnLetter(L) {
   const el = document.createElement('div');
   el.className = 'letter' + (L.bounce ? ' bounce' : '');
   el.innerHTML =
-    '<img class="icon" src="../assets/letter/' + L.tintFile + '" draggable="false">' +
+    '<img class="icon" src="../../assets/letter/' + L.tintFile + '" draggable="false">' +
     '<div class="label"><div class="bg"></div><span>' + escapeHtml(L.label) + '</span></div>';
   stack.appendChild(el);
 

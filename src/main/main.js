@@ -121,7 +121,12 @@ function openSettings() {
     webPreferences: { preload: path.join(__dirname, '..', 'renderer', 'preload.js'), contextIsolation: true }
   });
   settingsWin.loadFile(path.join(__dirname, '..', 'renderer', 'settings.html'));
-  settingsWin.once('ready-to-show', () => settingsWin.show());
+  settingsWin.once('ready-to-show', () => {
+    // 与覆盖层同级置顶（screen-saver），保证设置窗在覆盖层之上、可正常点击
+    settingsWin.setAlwaysOnTop(true, 'screen-saver');
+    settingsWin.show();
+    settingsWin.focus();
+  });
   settingsWin.on('closed', () => { settingsWin = null; });
 }
 
