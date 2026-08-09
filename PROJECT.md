@@ -207,6 +207,13 @@ git push origin v0.2.0
 ```
 下载：`https://github.com/NothingCooker/rimletter/releases`
 
+**重要：electron-builder 创建的 Release 是「草稿」（Draft），需手动发布：**
+- 方式一（GitHub 页面）：Releases → 找到 Draft 条目 → 右上角「Publish release」
+- 方式二（命令行，可同时写更新日志）：
+  ```bash
+  gh release edit v0.2.0 --repo NothingCooker/rimletter --notes "更新日志内容" --draft=false
+  ```
+
 **Release 文件：**
 - `RimLetter-{版本}-x64.exe` — NSIS 安装程序（用户下载这个）
 - `.exe.blockmap` — 增量更新映射（electron-updater 用）
