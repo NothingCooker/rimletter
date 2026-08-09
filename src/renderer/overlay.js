@@ -43,7 +43,7 @@ function spawnLetter(L) {
   el.addEventListener('mouseleave', () => { hovered = false; window.rimletter.setMouseOver(false); tooltip.classList.add('hidden'); });
   el.addEventListener('mousemove', (e) => showTooltip(e, L));
   el.addEventListener('click', () => dismiss(el, intervalId));
-  el.addEventListener('contextmenu', (e) => { e.preventDefault(); dismiss(el, intervalId); });
+  el.addEventListener('contextmenu', (e) => { e.preventDefault(); playSound('Click'); dismiss(el, intervalId); });
 
   // 自动消失
   setTimeout(() => { if (el.parentNode) dismiss(el, intervalId); }, L.dismissMs || 20000);
