@@ -2,6 +2,32 @@
 
 桌面功能性摆件：复刻《边缘世界》(RimWorld) 屏幕右侧的**信息播报（Letter 信件系统）**，硬件占用过高时信从屏幕右缘滑入提醒。
 
+## 实现状态（2026-08-09 完成）
+- ✅ 全部 15 个任务完成，32 个单元测试通过（`npm test`）
+- ✅ 应用可运行：`npm start`（透明覆盖层 + 托盘 + HTTP API + 插件系统）
+- ✅ 素材已提取：`assets/raw/`(22 纹理)、`assets/letter/`(5 染色信)、`assets/sounds/`(6 游戏原声 WAV)
+- ✅ 本地 API：http://127.0.0.1:17301（token 见 `%APPDATA%\rimletter\config.json`）
+- ✅ 插件：userData/plugins/ 放 .js 即加载（示例见项目 `plugins/example.js`）
+- ⏳ 待用户视觉确认：信的滑入/闪光/弹跳/文字居中观感
+
+## 代码结构
+```
+src/main/main.js        Electron 入口：透明窗+托盘+IPC+组装
+src/main/config.js      配置（appearance.iconSize 等）
+src/main/rules.js       规则引擎（纯函数，状态机/去重/恢复）
+src/main/sensors.js     传感器（systeminformation，可注入 mock）
+src/main/monitor.js     轮询服务（动态 snapshot 门面）
+src/main/api.js         本地 HTTP API（token 鉴权）
+src/main/plugins.js     插件加载器（注入 {api, logger}）
+src/renderer/           覆盖层 + 设置窗口 + 环世界样式
+scripts/extract_assets.py  素材提取管线
+```
+
+## 已知注意点
+- `.npmrc` 设 `electron_skip_binary_download=1` + 国内镜像，二进制需手动放到 node_modules/electron/dist
+- GPU 温度依赖显卡驱动，读不到时优雅返回空（不报错）
+- 游戏音频是 FMOD .fsb，用 UnityPy `samples` 解码为 WAV 才可播
+
 ## 技术栈
 - **Electron**（本机 Node v24 / npm 11；无 Rust，不用 Tauri）
 - 硬件监控：`systeminformation` npm 包
