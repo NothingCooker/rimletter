@@ -32,3 +32,16 @@ test('loadConfig 文件损坏时回退默认且不抛异常', () => {
   const cfg = loadConfig(dir);
   assert.equal(cfg.pollIntervalMs, 2000);
 });
+
+test('update.enabled 默认开启', () => {
+  assert.equal(DEFAULT_CONFIG.update.enabled, true);
+});
+
+test('update.enabled 可持久化关闭', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-'));
+  const cfg = loadConfig(dir);
+  cfg.update.enabled = false;
+  saveConfig(dir, cfg);
+  const again = loadConfig(dir);
+  assert.equal(again.update.enabled, false);
+});
