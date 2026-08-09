@@ -6,7 +6,7 @@ const { createSensors } = require('./sensors');
 const { createMonitor } = require('./monitor');
 const { formatLetter } = require('./letters');
 const { createApiServer } = require('./api');
-const { loadPlugins } = require('./plugins');
+const { loadPlugins, assertSchema, normalizeConfig, getPluginConfig } = require('./plugins');
 const { createUpdater } = require('./updater');
 const { buildAutostartOptions } = require('./autostart');
 const { autoUpdater } = require('electron-updater');
@@ -18,7 +18,7 @@ let config = null;
 let configDir = null;
 let monitor = null;
 let apiServer = null;
-let registry = { sensors: {}, customRules: [] };
+let registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHandlers: {} };
 let lastPluginResults = [];
 let updater = null;
 
@@ -53,12 +53,11 @@ function triggerLetter({ severity, title, description, sound }) {
 
 function reloadEverything() {
   config = loadConfig(configDir);
-  registry = { sensors: {}, customRules: [] };
-  const pluginApi = makePluginApi();
+  registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHandlers: {} };
   const disabled = new Set((config.plugins && config.plugins.disabled) || []);
   const pluginResults = loadPlugins({
     pluginsDir: path.join(configDir, 'plugins'),
-    apiFactory: () => pluginApi,
+    apiFactory: name => makePluginApiFor(name),
     filter: name => !disabled.has(name)
   });
   pluginResults.then(list => {
@@ -87,17 +86,30 @@ function reloadEverything() {
   monitor.start();
 }
 
-function makePluginApi() {
+function makePluginApiFor(name) {
   return {
-    registerSensor(name, fn) { registry.sensors[name] = { name, read: fn }; },
+    registerSensor(sensorName, fn) { registry.sensors[sensorName] = { name: sensorName, read: fn }; },
     registerRule(r) {
       if (!r.id) r.id = 'plugin-' + Math.random().toString(36).slice(2, 8);
-      registry.customRules.push(r);
+      const i = registry.customRules.findIndex(x => x.id === r.id);
+      if (i >= 0) registry.customRules[i] = r;
+      else registry.customRules.push(r);
     },
     letter(payload) { triggerLetter(payload); },
-    on() {},
+    on(evt, cb) {
+      if (typeof cb !== 'function') return;
+      const m = registry.pluginConfigHandlers[name] || (registry.pluginConfigHandlers[name] = {});
+      (m[evt] || (m[evt] = [])).push(cb);
+    },
     getState: async () => { try { return await getSensors().snapshot(); } catch { return {}; } },
     setInterval(fn, ms) { return setInterval(fn, ms); },
+    registerConfig(schema) {
+      assertSchema(schema);
+      registry.pluginConfigs[name] = schema;
+    },
+    getConfig() {
+      return getPluginConfig(registry.pluginConfigs[name], config.pluginConfig && config.pluginConfig[name]);
+    },
     logger: { info: (...a) => console.log('[plugin]', ...a), warn: (...a) => console.warn('[plugin]', ...a), error: (...a) => console.error('[plugin]', ...a) }
   };
 }
