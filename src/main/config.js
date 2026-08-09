@@ -11,7 +11,7 @@ const DEFAULT_CONFIG = {
   api: { enabled: true, port: 17301, token: 'auto' },
   appearance: { iconSize: 64 },
   sound: { enabled: true, volume: 0.7 },
-  plugins: { disabled: [] },
+  plugins: { disabled: ['example'] }, // example 为演示插件，默认禁用，可在设置中启用
   rules: [
     { id: 'builtin-cpu', sensor: 'cpu', metric: 'load', operator: '>', threshold: 85, durationMs: 5000, severity: 'ThreatBig', label: 'CPU 占用过高', description: 'CPU 已持续 85% 以上超过 5 秒', sound: 'auto', enabled: true },
     { id: 'builtin-gpu-temp', sensor: 'gpu', metric: 'temp', operator: '>', threshold: 85, durationMs: 5000, severity: 'ThreatSmall', label: '显卡过热', description: 'GPU 温度已持续 85°C 以上', sound: 'auto', enabled: true },

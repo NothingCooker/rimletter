@@ -24,8 +24,10 @@ function spawnLetter(L) {
   const el = document.createElement('div');
   el.className = 'letter' + (L.bounce ? ' bounce' : '');
   el.innerHTML =
+    '<div class="letter-inner">' +
     '<img class="icon" src="../../assets/letter/' + L.tintFile + '" draggable="false">' +
-    '<div class="label"><div class="bg"></div><span>' + escapeHtml(L.label) + '</span></div>';
+    '<div class="label"><div class="bg"></div><span>' + escapeHtml(L.label) + '</span></div>' +
+    '</div>';
   stack.appendChild(el);
 
   // 到达闪光 + 音效
@@ -60,7 +62,8 @@ function spawnFlash(L, el, flashColor, peakAlpha, scale) {
   const flash = document.createElement('div');
   flash.className = 'flash';
   flash.style.background = 'radial-gradient(circle, rgba(' + flashColor + ',' + peakAlpha + ') 0%, rgba(' + flashColor + ',' + (peakAlpha * 0.3) + ') 40%, transparent 70%)';
-  const rect = el.getBoundingClientRect();
+  const iconEl = el.querySelector('.icon');
+  const rect = iconEl ? iconEl.getBoundingClientRect() : el.getBoundingClientRect();
   flash.style.left = (rect.left + rect.width / 2) + 'px';
   flash.style.top = (rect.top + rect.height / 2) + 'px';
   const d = Math.max(window.innerWidth, window.innerHeight) * scale;
