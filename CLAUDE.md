@@ -4,7 +4,8 @@
 
 桌面功能性摆件：复刻《边缘世界》(RimWorld) 屏幕右侧的**信息播报（Letter 信件系统）**，硬件占用过高时信从屏幕右缘滑入提醒。
 
-## 实现状态（2026-08-10 v0.2.5 发布）
+## 实现状态（2026-08-10 v0.2.6 发布）
+- ✅ v0.2.6：插件配置新增 **button 字段类型** + `api.registerAction`（配置按钮/测试按钮），插件开发文档与 README 同步更新；56 单元测试通过（`npm test`）
 - ✅ 全部 15 个任务完成，55 个单元测试通过（`npm test`）
 - ✅ 应用可运行：`npm start`（透明覆盖层 + 托盘 + HTTP API + 插件系统）
 - ✅ 素材已提取：`assets/raw/`(22 纹理)、`assets/letter/`(5 染色信)、`assets/sounds/`(6 游戏原声 WAV)
@@ -37,7 +38,7 @@ scripts/extract_assets.py  素材提取管线
 
 ## Git 与仓库
 - 远程仓库：https://github.com/NothingCooker/rimletter （公开，master 分支）
-- 当前版本：**v0.2.5**（已发布；Releases 见 https://github.com/NothingCooker/rimletter/releases）
+- 当前版本：**v0.2.6**（已发布；Releases 见 https://github.com/NothingCooker/rimletter/releases）
 - GitHub CLI：`C:\Program Files\GitHub CLI\gh.exe`（PATH 未刷新，需全路径）
 - 网络（dev-sidecar 代理）：Windows 系统代理 http=127.0.0.1:31180 / https=127.0.0.1:31181
 - git 已配置：`http.proxy=127.0.0.1:31180`、`https.proxy=127.0.0.1:31181`、`http.sslBackend=schannel`（信任 dev-sidecar 的 MITM 证书）

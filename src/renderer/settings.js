@@ -233,6 +233,9 @@ const PLUGIN_DOCS = [
   ['api.on(event, handler)', '订阅事件：alert（告警）、recovered（恢复）、rule。'],
   ['api.getState()', '读取当前全部传感器实时值（Promise）。'],
   ['api.setInterval(fn, ms)', '定时器，应用退出自动清理。'],
+  ['api.registerConfig({title, fields})', '声明配置表单（显示在 插件管理 → 配置）。字段类型：text / number / bool / select / slider / button。'],
+  ['api.getConfig()', '读取当前插件配置（默认值已合并）。'],
+  ['api.registerAction(action, fn)', '注册配置表单 button 字段的动作：点按钮时调用 fn()，返回的字符串显示在按钮旁（key 与字段 key 对应）。'],
   ['logger.info/warn/error(...)', '带插件名前缀的日志。']
 ];
 
@@ -430,6 +433,12 @@ function docsHtml() {
     "  api.registerSensor('myApp', async () => ({ value: 42 }));\n" +
     '  api.registerRule({ sensor: \'myApp\', metric: \'value\', operator: \'>\', threshold: 40, severity: \'NegativeEvent\', label: \'超载\', description: \'...\', sound: \'auto\', enabled: true });\n' +
     "  api.letter({ severity: 'PositiveEvent', title: '你好', description: '插件主动播报' });\n" +
+    '  // 配置表单（text/number/bool/select/slider/button 六种字段）\n' +
+    '  api.registerConfig({ title: \'示例\', fields: [\n' +
+    "    { key: 'url', label: '地址', type: 'text' },\n" +
+    "    { key: 'test', label: '测试', type: 'button', buttonText: '点我' }\n" +
+    '  ] });\n' +
+    "  api.registerAction('test', async () => '按钮点击结果（显示在按钮旁）');\n" +
     '  logger.info(\'插件已加载\');\n' +
     '};</pre></div>';
 }

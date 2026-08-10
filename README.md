@@ -93,7 +93,24 @@ curl -X POST http://127.0.0.1:17301/letter \
 
 ## 插件开发
 
-插件是 `%APPDATA%\rimletter\plugins\` 目录下的一个 `.js` 文件，导出 `async ({ api, logger }) => {}`。可注册自定义传感器（自动出现在规则下拉中）、注册规则、主动触发播报、订阅事件、定时任务。
+插件是 `%APPDATA%\rimletter\plugins\` 目录下的一个 `.js` 文件，导出 `async ({ api, logger }) => {}`。可注册自定义传感器（自动出现在规则下拉中）、注册规则、主动触发播报、订阅事件、定时任务，以及声明配置表单。
+
+### 插件 API
+
+| API | 说明 |
+|---|---|
+| `api.registerSensor(name, fn)` | 注册自定义传感器，自动出现在规则引擎下拉 |
+| `api.registerRule(rule)` | 注册规则（结构同内置规则） |
+| `api.letter({severity, title, description, sound})` | 主动触发一封播报 |
+| `api.on(event, handler)` | 订阅事件：alert / recovered / rule |
+| `api.getState()` | 读取当前全部传感器实时值 |
+| `api.setInterval(fn, ms)` | 定时器，应用退出自动清理 |
+| `api.registerConfig({title, fields})` | 声明配置表单（text/number/bool/select/slider/button 六种字段），在 设置→插件管理→配置 内编辑 |
+| `api.getConfig()` | 读取当前插件配置（默认值已合并） |
+| `api.registerAction(action, fn)` | 注册配置表单 button 字段的动作，返回的字符串显示在按钮旁 |
+| `logger.info/warn/error(...)` | 带插件名前缀的日志 |
+
+### 示例
 
 ```js
 module.exports = async ({ api, logger }) => {
@@ -102,12 +119,18 @@ module.exports = async ({ api, logger }) => {
     sensor: 'myApp', metric: 'value', operator: '>', threshold: 40,
     severity: 'NegativeEvent', label: '超载', description: '...', sound: 'auto', enabled: true
   });
+  // 配置表单（text/number/bool/select/slider/button 六种字段）
+  api.registerConfig({ title: '示例', fields: [
+    { key: 'url', label: '地址', type: 'text' },
+    { key: 'test', label: '测试', type: 'button', buttonText: '点我' }
+  ] });
+  api.registerAction('test', async () => '按钮点击结果（显示在按钮旁）');
   api.letter({ severity: 'PositiveEvent', title: '你好', description: '插件主动播报' });
   logger.info('插件已加载');
 };
 ```
 
-完整 API 参考见设置窗口 - 插件管理 - 插件开发文档。
+完整 API 参考见设置窗口 - 插件管理 - 插件开发文档。官方插件仓库：https://github.com/NothingCooker/rimletter-official-plugins
 
 ## 素材说明
 
