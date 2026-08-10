@@ -321,6 +321,7 @@ app.whenReady().then(() => {
   if (config.api.enabled) {
     apiServer = createApiServer({
       token: config.api.token,
+      cors: config.api.cors,
       onLetter: triggerLetter,
       getState: async () => { try { return await getSensors().snapshot(); } catch { return {}; } },
       getRules: getEffectiveRules,

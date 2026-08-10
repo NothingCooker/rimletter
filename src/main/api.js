@@ -1,13 +1,22 @@
 // src/main/api.js
 const http = require('node:http');
 
-function createApiServer({ token, onLetter, getState, getRules, addRule, updateRule, deleteRule, reload }) {
+function createApiServer({ token, onLetter, getState, getRules, addRule, updateRule, deleteRule, reload, cors = false }) {
   let server = null;
   let port = 0;
 
+  // CORS 默认关闭；仅当 config.api.cors=true（如本机手动发信网页）时开放浏览器跨域调用。
+  // 服务仅绑定 127.0.0.1 + token 鉴权，风险可控；发行版默认不开启，体验与安全面同关闭时一致。
+  const CORS_HEADERS = cors ? {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'content-type, x-rimletter-token',
+    'Access-Control-Max-Age': '86400'
+  } : null;
+
   function json(res, code, obj) {
     const body = JSON.stringify(obj);
-    res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', ...(CORS_HEADERS || {}) });
     res.end(body);
   }
 
@@ -21,6 +30,12 @@ function createApiServer({ token, onLetter, getState, getRules, addRule, updateR
   }
 
   async function handle(req, res) {
+    // CORS 预检（仅 cors=true 时开放）：无 token，需在鉴权前响应
+    if (cors && req.method === 'OPTIONS') {
+      res.writeHead(204, CORS_HEADERS);
+      res.end();
+      return;
+    }
     const auth = req.headers['x-rimletter-token'];
     if (auth !== token) { json(res, 401, { error: 'unauthorized' }); return; }
     const url = new URL(req.url, 'http://127.0.0.1');

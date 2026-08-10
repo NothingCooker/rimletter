@@ -8,7 +8,7 @@ const DEFAULT_CONFIG = {
   pollIntervalMs: 2000,
   autoDismissMs: 20000,
   recoveryDismissMs: 10000,
-  api: { enabled: true, port: 17301, token: 'auto' },
+  api: { enabled: true, port: 17301, token: 'auto', cors: false },
   appearance: { iconSize: 64 },
   sound: { enabled: true, volume: 0.25 },
   update: { enabled: true },

@@ -83,3 +83,39 @@ test('GET /rules 与 DELETE /rules/:id 生效', async () => {
   assert.equal(ctx.deleted, 'r1');
   await srv.stop();
 });
+
+// 原样请求（保留响应头），用于 CORS 断言
+function rawReq(port, method, path, headers, body) {
+  return new Promise((resolve, reject) => {
+    const r = http.request({ host: '127.0.0.1', port, method, path, headers }, res => {
+      let buf = '';
+      res.on('data', c => buf += c);
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: buf }));
+    });
+    r.on('error', reject);
+    if (body) r.write(body);
+    r.end();
+  });
+}
+
+test('CORS 默认关闭：OPTIONS 不走预检，响应无 ACAO 头', async () => {
+  const { srv } = await startServer(); // cors 默认 false
+  const pre = await rawReq(srv.port(), 'OPTIONS', '/letter', { Origin: 'null', 'Access-Control-Request-Method': 'POST' });
+  assert.notEqual(pre.status, 204, '未开放预检');
+  assert.equal(pre.headers['access-control-allow-origin'], undefined);
+  const post = await rawReq(srv.port(), 'POST', '/letter', { 'Content-Type': 'application/json', 'X-RimLetter-Token': 'testtoken', Origin: 'null' }, JSON.stringify({ severity: 'NeutralEvent', title: 't' }));
+  assert.equal(post.status, 200);
+  assert.equal(post.headers['access-control-allow-origin'], undefined);
+  await srv.stop();
+});
+
+test('CORS 开启：OPTIONS 预检 204，POST 响应带 ACAO 头', async () => {
+  const { srv } = await startServer({ cors: true });
+  const pre = await rawReq(srv.port(), 'OPTIONS', '/letter', { Origin: 'null', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type,x-rimletter-token' });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers['access-control-allow-origin'], '*');
+  const post = await rawReq(srv.port(), 'POST', '/letter', { 'Content-Type': 'application/json', 'X-RimLetter-Token': 'testtoken', Origin: 'null' }, JSON.stringify({ severity: 'NeutralEvent', title: 't' }));
+  assert.equal(post.status, 200);
+  assert.equal(post.headers['access-control-allow-origin'], '*');
+  await srv.stop();
+});
