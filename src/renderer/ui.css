@@ -237,6 +237,13 @@ html, body {
   border-radius: 2px;
   white-space: nowrap;
 }
+/* 配置表单 button 字段的结果行（与 .rw-lbl 130px + gap 8px 对齐） */
+.rw-btnresult {
+  margin-left: 138px;
+  margin-top: -4px;
+  padding-bottom: 4px;
+}
+.rw-btnresult .rw-gray { white-space: normal; word-break: break-all; max-width: 320px; }
 
 /* 下拉/输入 */
 .rw-select, .rw-input {

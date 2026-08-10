@@ -330,6 +330,10 @@ function renderPluginConfigForm(plugin) {
         '<div class="rw-slider" data-i="' + i + '" data-role="slider" data-min="' + min + '" data-max="' + max + '" data-step="' + step + '">' +
         '<div class="rw-thumb" style="left:' + pct + '%"></div></div>' +
         '<span class="rw-gray" data-i="' + i + '" data-role="slider-label">' + cur + (f.unit ? ' ' + f.unit : '') + '</span></div>';
+    } else if (f.type === 'button') {
+      html += '<div class="rw-row"><span class="rw-lbl">' + esc(f.label) + '</span>' +
+        '<button class="rw-btn" data-i="' + i + '" data-role="button">' + esc(f.buttonText || '执行') + '</button></div>' +
+        '<div class="rw-row rw-btnresult"><span class="rw-gray" data-i="' + i + '" data-role="button-result"></span></div>';
     }
   });
   html += '<div class="rw-row" style="margin-top:10px;gap:10px">' +
@@ -373,11 +377,25 @@ function renderPluginConfigForm(plugin) {
         window.addEventListener('mousemove', move);
         window.addEventListener('mouseup', up);
       });
+    } else if (f.type === 'button') {
+      elByRole('button', i).addEventListener('click', async () => {
+        const res = elByRole('button-result', i);
+        res.textContent = '…';
+        try {
+          const r = await window.rimletter.runPluginAction(plugin.name, f.key);
+          res.textContent = r.ok ? r.result : '⚠ ' + r.error;
+        } catch (err) {
+          res.textContent = '⚠ 调用失败';
+        }
+      });
     }
   });
 
   document.getElementById('cfg-save').addEventListener('click', async () => {
-    await window.rimletter.setPluginConfig(plugin.name, values);
+    // button 字段无存储值，保存时排除
+    const saveValues = {};
+    for (const f of fields) if (f.type !== 'button') saveValues[f.key] = values[f.key];
+    await window.rimletter.setPluginConfig(plugin.name, saveValues);
     renderPlugins();
   });
   document.getElementById('cfg-cancel').addEventListener('click', () => renderPlugins());

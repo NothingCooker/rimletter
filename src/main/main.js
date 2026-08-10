@@ -18,7 +18,7 @@ let config = null;
 let configDir = null;
 let monitor = null;
 let apiServer = null;
-let registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHandlers: {} };
+let registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHandlers: {}, pluginActions: {} };
 let lastPluginResults = [];
 let updater = null;
 
@@ -53,7 +53,7 @@ function triggerLetter({ severity, title, description, sound }) {
 
 function reloadEverything() {
   config = loadConfig(configDir);
-  registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHandlers: {} };
+  registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHandlers: {}, pluginActions: {} };
   const disabled = new Set((config.plugins && config.plugins.disabled) || []);
   const pluginResults = loadPlugins({
     pluginsDir: path.join(configDir, 'plugins'),
@@ -109,6 +109,11 @@ function makePluginApiFor(name) {
     },
     getConfig() {
       return getPluginConfig(registry.pluginConfigs[name], config.pluginConfig && config.pluginConfig[name]);
+    },
+    // 配置表单 button 字段的动作处理：插件注册 action，设置窗点按钮时调用，返回文本显示在按钮旁
+    registerAction(action, fn) {
+      const m = registry.pluginActions[name] || (registry.pluginActions[name] = {});
+      m[action] = fn;
     },
     logger: { info: (...a) => console.log('[plugin]', ...a), warn: (...a) => console.warn('[plugin]', ...a), error: (...a) => console.error('[plugin]', ...a) }
   };
@@ -228,6 +233,17 @@ ipcMain.handle('rules:set', (e, rules) => {
 });
 ipcMain.handle('letter:test', (e, severity) => triggerLetter({ severity, title: '测试播报', description: '这是来自设置窗口的测试信' }));
 ipcMain.handle('plugins:reload', () => { reloadEverything(); return { sensors: Object.keys(registry.sensors), customRules: registry.customRules, configs: Object.keys(registry.pluginConfigs) }; });
+// 配置表单 button 字段：调用插件注册的 action，返回 { ok, result | error }
+ipcMain.handle('plugins:action', async (e, name, action) => {
+  const fn = (registry.pluginActions[name] || {})[action];
+  if (typeof fn !== 'function') return { ok: false, error: '插件未注册该动作: ' + action };
+  try {
+    const result = await fn();
+    return { ok: true, result: result == null ? '' : String(result) };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  }
+});
 function setPluginConfig(name, values) {
   const schema = registry.pluginConfigs[name];
   if (!schema) return { ok: false, error: '插件无配置定义' };

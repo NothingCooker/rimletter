@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const FIELD_TYPES = ['text', 'number', 'bool', 'select', 'slider'];
+const FIELD_TYPES = ['text', 'number', 'bool', 'select', 'slider', 'button'];
 
 function assertSchema(schema) {
   if (!schema || typeof schema !== 'object') throw new Error('registerConfig: schema 必须是对象');

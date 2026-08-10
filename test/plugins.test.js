@@ -65,6 +65,16 @@ test('normalizeConfig 非法 schema 抛错', () => {
   assert.throws(() => normalizeConfig({ fields: [{ key: 's', label: '滑', type: 'slider' }] }, {}), /需 min\/max/);
 });
 
+test('normalizeConfig 支持 button 字段（无存储值）', () => {
+  const schema = { fields: [
+    { key: 'n', label: '数', type: 'number', default: 5 },
+    { key: 'b', label: '测', type: 'button', buttonText: '测试' }
+  ]};
+  const out = normalizeConfig(schema, { n: 3 });
+  assert.equal(out.n, 3);
+  assert.equal(out.b, undefined); // button 字段不产生存储值
+});
+
 test('getPluginConfig 合并默认值与存储值；无 schema 返回 null', () => {
   const schema = { fields: [
     { key: 'h', label: '小时', type: 'number', default: 23 },

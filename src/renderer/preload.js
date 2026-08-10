@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('rimletter', {
   previewPlugin: (name) => ipcRenderer.invoke('plugins:preview', name),
   openPluginsDir: () => ipcRenderer.invoke('plugins:dir'),
   setPluginConfig: (name, values) => ipcRenderer.invoke('plugins:setConfig', name, values),
+  runPluginAction: (name, action) => ipcRenderer.invoke('plugins:action', name, action),
   getState: () => ipcRenderer.invoke('state:get'),
   closeSettings: () => ipcRenderer.invoke('settings:close'),
   onLetter: (cb) => ipcRenderer.on('letter:new', (_e, letter) => cb(letter)),
