@@ -130,6 +130,7 @@ D:\claudeswork\official-plugin\plugin-claude\
 - 写前先读原文件，写时合并（保留用户其他 hooks 与 settings 字段）。
 - settings.json 非法 JSON → 备份为 `settings.json.bak-<时间戳>`，跳过自动安装，`logger.warn`。
 - 停用/卸载：插件不加载 → 监听器不在 → 钩子转发静默失败，无副作用；README 说明如需彻底移除可手动删条目或删备份。
+- **实现补充（禁用自检）**：RimLetter 重载时禁用插件不会执行卸载钩子，旧监听器会驻留到应用重启。因此监听器每次收到事件先读 `config.json` 的 `plugins.disabled`，被禁用则 410 拒收并关闭端口；钩子模式转发前也自检，禁用则静默退出 0（不产生 stderr 噪音）。插件名由 `__filename` basename 推导，与配置里的禁用项一致。
 
 ### 8.2 手动安装
 README 提供上述 JSON 片段 + 说明，用户自行粘贴到 `~/.claude/settings.json` 的 `hooks` 下。
