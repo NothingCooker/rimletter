@@ -2,6 +2,7 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen } = require('electron');
 const path = require('node:path');
 const { loadConfig, saveConfig } = require('./config');
+const { createOverlayMouseGuard } = require('./overlayMouse');
 const { createSensors } = require('./sensors');
 const { createMonitor } = require('./monitor');
 const { formatLetter } = require('./letters');
@@ -21,6 +22,8 @@ let apiServer = null;
 let registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHandlers: {}, pluginActions: {} };
 let lastPluginResults = [];
 let updater = null;
+let overlayGuard = null;      // 覆盖层鼠标穿透守卫（见 overlayMouse.js）
+let letterRects = [];         // 渲染层上报的信件矩形（屏幕坐标 DIP），供守卫核对光标位置
 
 const ASSETS = path.join(__dirname, '..', '..', 'assets');
 
@@ -135,6 +138,27 @@ function initUpdater() {
   updater.scheduleInitialCheck();
 }
 
+// 覆盖层鼠标穿透守卫：整窗平时点击穿透，悬停信件时临时可交互。
+// Windows 上 forward 切换可能丢失 mouseleave，导致可交互状态残留、整屏被挡。
+// 守卫在主进程周期性核对光标是否仍在信件矩形内，不在就强制恢复穿透（自愈）。
+function ensureOverlayGuard() {
+  if (!overlayGuard) {
+    overlayGuard = createOverlayMouseGuard({
+      setClickThrough: () => {
+        if (!mainWindow) return;
+        mainWindow.setIgnoreMouseEvents(true, { forward: true });
+        // 同步渲染层复位悬停态，避免其内部 hovered 残留
+        mainWindow.webContents.send('overlay:mouse-leave-force');
+      },
+      setInteractive: () => { if (mainWindow) mainWindow.setIgnoreMouseEvents(false, { forward: true }); },
+      getCursor: () => screen.getCursorScreenPoint(),
+      getLetterRects: () => letterRects,
+      intervalMs: 400
+    });
+  }
+  return overlayGuard;
+}
+
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().bounds;
   mainWindow = new BrowserWindow({
@@ -150,9 +174,17 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, '..', 'renderer', 'preload.js'), contextIsolation: true }
   });
   mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  mainWindow.once('ready-to-show', () => {
+    // 透明无边框窗口有时不立即应用鼠标穿透（Windows 已知问题），首帧后再断言一次
+    mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  });
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'overlay.html'));
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    if (overlayGuard) { overlayGuard.stop(); overlayGuard = null; }
+    letterRects = [];
+  });
 }
 
 function openSettings() {
@@ -305,7 +337,8 @@ ipcMain.handle('plugins:dir', () => {
 });
 ipcMain.handle('state:get', async () => { try { return await getSensors().snapshot(); } catch { return {}; } });
 ipcMain.handle('settings:close', () => { if (settingsWin) settingsWin.close(); });
-ipcMain.on('overlay:mouseover', (e, over) => { if (mainWindow) mainWindow.setIgnoreMouseEvents(!over, { forward: true }); });
+ipcMain.on('overlay:mouseover', (e, over) => ensureOverlayGuard().onHover(over));
+ipcMain.on('overlay:letter-rects', (e, rects) => { letterRects = Array.isArray(rects) ? rects : []; });
 ipcMain.handle('update:state', () => updater ? updater.getState() : { code: 'idle' });
 ipcMain.handle('update:check', () => updater ? updater.checkNow() : null);
 ipcMain.handle('update:install', () => { if (updater) updater.quitAndInstall(); return true; });

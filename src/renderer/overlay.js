@@ -1,8 +1,35 @@
 // src/renderer/overlay.js
 const stack = document.getElementById('stack');
 const tooltip = document.getElementById('tooltip');
-let hovered = false;
+let hoveredEl = null;   // 当前悬停的信件元素（全局布尔不够：dismiss 时要区分具体是哪封信）
 let config = { sound: { enabled: true, volume: 0.7 }, appearance: { iconSize: 64 } };
+
+// 悬停态变更：只在「同一封信」上切换，避免 A 消失时误复位 B 的悬停态
+function setHovered(el, on) {
+  if (on) {
+    hoveredEl = el;
+    window.rimletter.setMouseOver(true);
+  } else if (hoveredEl === el) {
+    hoveredEl = null;
+    window.rimletter.setMouseOver(false);
+  }
+}
+
+// 上报所有信件矩形给主进程守卫（节流）。窗口铺满主屏且通常位于 (0,0)，
+// 为兼容多屏/偏移，加 screenX/screenY 换算为屏幕坐标（DIP，与 getCursorScreenPoint 一致）。
+let rectTimer = null;
+function reportRectsSoon() {
+  if (rectTimer) return;
+  rectTimer = setTimeout(() => {
+    rectTimer = null;
+    const ox = window.screenX || 0, oy = window.screenY || 0;
+    const rects = [...stack.children].map(el => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left + ox, y: r.top + oy, w: r.width, h: r.height };
+    });
+    window.rimletter.setLetterRects(rects);
+  }, 100);
+}
 
 // 图标尺寸由 config.appearance.iconSize 驱动
 const STYLE = document.createElement('style');
@@ -29,6 +56,7 @@ function spawnLetter(L) {
     '<div class="label"><div class="bg"></div><span>' + escapeHtml(L.label) + '</span></div>' +
     '</div>';
   stack.appendChild(el);
+  reportRectsSoon();
 
   // 到达闪光 + 音效
   spawnFlash(L, el, L.flashColor, 0.55, 0.7);
@@ -39,6 +67,7 @@ function spawnLetter(L) {
     if (e.animationName === 'fall') {
       el.style.animation = 'none';
       el.style.opacity = '1';
+      reportRectsSoon();
     }
   });
 
@@ -49,9 +78,9 @@ function spawnLetter(L) {
   }, (L.flashInterval || 90) * 1000);
 
   // 交互
-  el.addEventListener('mouseenter', () => { hovered = true; window.rimletter.setMouseOver(true); });
-  el.addEventListener('mouseleave', () => { hovered = false; window.rimletter.setMouseOver(false); tooltip.classList.add('hidden'); });
-  el.addEventListener('mousemove', (e) => showTooltip(e, L));
+  el.addEventListener('mouseenter', () => { setHovered(el, true); reportRectsSoon(); });
+  el.addEventListener('mouseleave', () => { setHovered(el, false); tooltip.classList.add('hidden'); reportRectsSoon(); });
+  el.addEventListener('mousemove', (e) => { showTooltip(e, L); reportRectsSoon(); });
   el.addEventListener('click', () => dismiss(el, intervalId));
   el.addEventListener('contextmenu', (e) => { e.preventDefault(); playSound('Click'); dismiss(el, intervalId); });
 
@@ -62,8 +91,12 @@ function spawnLetter(L) {
   while (stack.children.length > 6) {
     const first = stack.firstChild;
     if (first === el) break;
+    // 直接摘除不走 dismiss（无动画/音效），但要安全处理悬停态：
+    // 否则光标停在被摘掉的信上时 mouseleave 永不触发 → 整屏锁死
+    setHovered(first, false);
     first.remove();
   }
+  reportRectsSoon();
 }
 
 function spawnFlash(L, el, flashColor, peakAlpha, scale) {
@@ -83,7 +116,7 @@ function spawnFlash(L, el, flashColor, peakAlpha, scale) {
 
 function dismiss(el, intervalId) {
   clearInterval(intervalId);
-  if (hovered) { hovered = false; window.rimletter.setMouseOver(false); }
+  setHovered(el, false); // 只复位「这一封」信的悬停态，别误动另一封被悬停的信
   tooltip.classList.add('hidden');
 
   // FLIP：记录其余信当前纵向位置
@@ -106,6 +139,7 @@ function dismiss(el, intervalId) {
   ghost.style.pointerEvents = 'none';
   document.body.appendChild(ghost);
   el.remove();
+  reportRectsSoon();
   setTimeout(() => ghost.remove(), 520);
 
   // Invert：把其余信固定回旧位置（视觉不动）
@@ -125,6 +159,7 @@ function dismiss(el, intervalId) {
         l.style.transition = '';
         l.style.transform = '';
         l.removeEventListener('transitionend', done);
+        reportRectsSoon(); // FLIP 结束后信件已移到新位置，更新守卫用矩形
       });
     });
   }));
@@ -161,3 +196,10 @@ window.rimletter.onConfigChange(cfg => {
   applyIconSize(cfg.appearance && cfg.appearance.iconSize);
 });
 window.rimletter.onLetter(L => spawnLetter(L));
+// 主进程守卫检测到光标已不在信件上（mouseleave 可能被丢弃）时，强制同步复位渲染层悬停态
+window.rimletter.onMouseLeaveForce(() => {
+  if (hoveredEl) hoveredEl = null;
+  window.rimletter.setMouseOver(false); // 与主进程穿透状态对齐（幂等）
+  tooltip.classList.add('hidden');
+  reportRectsSoon();
+});
