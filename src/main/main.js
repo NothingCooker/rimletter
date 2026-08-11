@@ -23,7 +23,6 @@ let registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHa
 let lastPluginResults = [];
 let updater = null;
 let overlayGuard = null;      // 覆盖层鼠标穿透守卫（见 overlayMouse.js）
-let letterRects = [];         // 渲染层上报的信件矩形（屏幕坐标 DIP），供守卫核对光标位置
 
 const ASSETS = path.join(__dirname, '..', '..', 'assets');
 
@@ -140,7 +139,8 @@ function initUpdater() {
 
 // 覆盖层鼠标穿透守卫：整窗平时点击穿透，悬停信件时临时可交互。
 // Windows 上 forward 切换可能丢失 mouseleave，导致可交互状态残留、整屏被挡。
-// 守卫在主进程周期性核对光标是否仍在信件矩形内，不在就强制恢复穿透（自愈）。
+// 悬停检测权威在渲染层（elementFromPoint，同一坐标空间，规避跨进程坐标差异），
+// 主进程只做状态切换 + 超时看门狗兜底（渲染层无响应时强制恢复穿透）。
 function ensureOverlayGuard() {
   if (!overlayGuard) {
     overlayGuard = createOverlayMouseGuard({
@@ -151,9 +151,8 @@ function ensureOverlayGuard() {
         mainWindow.webContents.send('overlay:mouse-leave-force');
       },
       setInteractive: () => { if (mainWindow) mainWindow.setIgnoreMouseEvents(false, { forward: true }); },
-      getCursor: () => screen.getCursorScreenPoint(),
-      getLetterRects: () => letterRects,
-      intervalMs: 400
+      timeoutMs: 3000,
+      intervalMs: 1000
     });
   }
   return overlayGuard;
@@ -183,7 +182,6 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
     if (overlayGuard) { overlayGuard.stop(); overlayGuard = null; }
-    letterRects = [];
   });
 }
 
@@ -338,7 +336,6 @@ ipcMain.handle('plugins:dir', () => {
 ipcMain.handle('state:get', async () => { try { return await getSensors().snapshot(); } catch { return {}; } });
 ipcMain.handle('settings:close', () => { if (settingsWin) settingsWin.close(); });
 ipcMain.on('overlay:mouseover', (e, over) => ensureOverlayGuard().onHover(over));
-ipcMain.on('overlay:letter-rects', (e, rects) => { letterRects = Array.isArray(rects) ? rects : []; });
 ipcMain.handle('update:state', () => updater ? updater.getState() : { code: 'idle' });
 ipcMain.handle('update:check', () => updater ? updater.checkNow() : null);
 ipcMain.handle('update:install', () => { if (updater) updater.quitAndInstall(); return true; });

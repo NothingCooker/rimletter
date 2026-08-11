@@ -2,85 +2,96 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { createOverlayMouseGuard } = require('../src/main/overlayMouse');
 
-function makeGuard({ cursor = { x: 100, y: 100 }, rects = [] } = {}) {
+// 可注入时钟，便于测试看门狗超时逻辑
+function makeGuard(overrides = {}) {
   const calls = { clickThrough: 0, interactive: 0 };
-  let cur = cursor;
-  let letters = rects;
+  let t = 0;
   const guard = createOverlayMouseGuard({
     setClickThrough: () => { calls.clickThrough++; },
     setInteractive: () => { calls.interactive++; },
-    getCursor: () => cur,
-    getLetterRects: () => letters,
-    intervalMs: 50
+    timeoutMs: 3000,
+    intervalMs: 1000,
+    now: () => t,
+    ...overrides
   });
-  return { guard, calls, setCursor: c => { cur = c; }, setRects: r => { letters = r; } };
+  return { guard, calls, setNow: n => { t = n; } };
 }
 
-// 守卫可交互期间有内部 interval，测试结束必须 stop()，否则进程不退出
-function withGuard(t, opts) {
-  const g = makeGuard(opts);
+test('悬停进入可交互；重复 keepalive 不重复触发 setInteractive', (t) => {
+  const g = makeGuard();
+  g.guard.onHover(true);
+  assert.strictEqual(g.calls.interactive, 1, '首次悬停应进入可交互');
+  g.guard.onHover(true); // keepalive
+  g.guard.onHover(true); // keepalive
+  assert.strictEqual(g.calls.interactive, 1, '重复 keepalive 不应重复 setInteractive');
+  assert.strictEqual(g.calls.clickThrough, 0);
   t.after(() => g.guard.stop());
-  return g;
-}
-
-test('悬停信件时进入可交互，光标仍在信件内则不强制恢复', (t) => {
-  const g = withGuard(t, { cursor: { x: 30, y: 30 }, rects: [{ x: 0, y: 0, w: 64, h: 50 }] });
-  g.guard.onHover(true);
-  assert.strictEqual(g.calls.interactive, 1, '悬停 → 应进入可交互');
-  assert.strictEqual(g.calls.clickThrough, 0, '悬停时不应触发穿透');
-  const forced = g.guard.tick();
-  assert.strictEqual(forced, false, '光标仍在信件内 → 不强制恢复');
-  assert.strictEqual(g.calls.clickThrough, 0);
 });
 
-test('光标离开信件区域（mouseleave 被丢弃的场景）→ tick 强制恢复穿透', (t) => {
-  const g = withGuard(t, { cursor: { x: 30, y: 30 }, rects: [{ x: 0, y: 0, w: 64, h: 50 }] });
-  g.guard.onHover(true);
-  g.setCursor({ x: 500, y: 500 }); // 光标已移到屏幕别处，但 mouseleave 事件丢了
-  const forced = g.guard.tick();
-  assert.strictEqual(forced, true, '光标不在任何信件上 → 应强制恢复');
-  assert.strictEqual(g.calls.clickThrough, 1);
-  assert.strictEqual(g.guard.isInteractive(), false, '强制恢复后不再可交互');
-});
-
-test('光标在多个信件之一上时保持可交互', (t) => {
-  const g = withGuard(t, { cursor: { x: 200, y: 100 }, rects: [
-    { x: 0, y: 0, w: 64, h: 50 },
-    { x: 180, y: 80, w: 64, h: 50 }
-  ] });
-  g.guard.onHover(true);
-  assert.strictEqual(g.guard.tick(), false);
-  assert.strictEqual(g.calls.clickThrough, 0);
-});
-
-test('无信件矩形时强制恢复（防止悬停态残留时无参照物）', (t) => {
-  const g = withGuard(t, { cursor: { x: 30, y: 30 }, rects: [] });
-  g.guard.onHover(true);
-  assert.strictEqual(g.guard.tick(), true);
-  assert.strictEqual(g.calls.clickThrough, 1);
-});
-
-test('onHover(false)（正常 mouseleave）直接恢复穿透并停表', (t) => {
-  const g = withGuard(t, { cursor: { x: 30, y: 30 }, rects: [{ x: 0, y: 0, w: 64, h: 50 }] });
+test('正常离开恢复穿透，且只切换一次（不触发 IPC 乒乓）', (t) => {
+  const g = makeGuard();
   g.guard.onHover(true);
   g.guard.onHover(false);
   assert.strictEqual(g.calls.clickThrough, 1);
+  g.guard.onHover(false); // 渲染层收到强制通知后的回执，此时已是穿透态
+  g.guard.onHover(false);
+  assert.strictEqual(g.calls.clickThrough, 1, '重复 false 不应再次发穿透通知');
   assert.strictEqual(g.guard.isInteractive(), false);
-  assert.strictEqual(g.guard.tick(), false, '停表后 tick 不再触发恢复');
+  t.after(() => g.guard.stop());
 });
 
-test('矩形边界判定为闭区间（光标在边界上算在信件内）', (t) => {
-  const g = withGuard(t, { cursor: { x: 64, y: 50 }, rects: [{ x: 0, y: 0, w: 64, h: 50 }] });
+test('看门狗：超时无消息（渲染层无响应）→ 强制恢复穿透', (t) => {
+  const g = makeGuard();
   g.guard.onHover(true);
-  assert.strictEqual(g.guard.tick(), false, '右/下边界应算在内');
-  g.setCursor({ x: 65, y: 50 });
-  assert.strictEqual(g.guard.tick(), true, '越过右边界应强制恢复');
+  g.setNow(1000); // 1s < 3s 超时
+  assert.strictEqual(g.guard.tick(), false, '未超时不应强制');
+  g.setNow(4000); // 4s > 3s 超时
+  assert.strictEqual(g.guard.tick(), true, '超时应强制恢复穿透');
+  assert.strictEqual(g.calls.clickThrough, 1);
+  assert.strictEqual(g.guard.isInteractive(), false);
+  t.after(() => g.guard.stop());
 });
 
-test('stop() 后不再周期核对（interval 被清掉）', (t) => {
-  const g = withGuard(t, { cursor: { x: 500, y: 500 }, rects: [{ x: 0, y: 0, w: 64, h: 50 }] });
+test('看门狗：keepalive 刷新时间戳，活跃悬停不被误杀', (t) => {
+  const g = makeGuard();
+  g.guard.onHover(true);
+  // 渲染层每 ~800ms keepalive 一次
+  g.setNow(800);  g.guard.onHover(true);
+  g.setNow(1600); g.guard.onHover(true);
+  g.setNow(2400); g.guard.onHover(true);
+  g.setNow(3000); // 距上次 keepalive 仅 600ms
+  assert.strictEqual(g.guard.tick(), false, 'keepalive 保持活跃，不应强制');
+  assert.strictEqual(g.calls.clickThrough, 0);
+  t.after(() => g.guard.stop());
+});
+
+test('硬上限：即使渲染层持续 keepalive 保活，到点也强制穿透（结构上杜绝锁死）', (t) => {
+  const g = makeGuard();
+  g.guard.onHover(true); // interactiveSince = 0
+  // 渲染层一直保活（每 800ms keepalive），软超时永远不会触发
+  for (let m = 800; m < 14000; m += 800) { g.setNow(m); g.guard.onHover(true); }
+  // now = 13600 < hardCapMs(15000)
+  assert.strictEqual(g.guard.tick(), false, '未到硬上限前保活有效');
+  g.setNow(16000); // 超过 15000
+  assert.strictEqual(g.guard.tick(), true, '硬上限到点必须强制穿透');
+  assert.strictEqual(g.calls.clickThrough, 1);
+  assert.strictEqual(g.guard.isInteractive(), false);
+  t.after(() => g.guard.stop());
+});
+
+test('非交互状态 tick 不动作', (t) => {
+  const g = makeGuard();
+  assert.strictEqual(g.guard.tick(), false);
+  assert.strictEqual(g.calls.clickThrough, 0);
+  assert.strictEqual(g.guard.isInteractive(), false);
+  t.after(() => g.guard.stop());
+});
+
+test('stop() 后不再周期核对', (t) => {
+  const g = makeGuard();
   g.guard.onHover(true);
   g.guard.stop();
+  g.setNow(100000);
   // 手工 tick 仍会检查并恢复（幂等），但 interval 已被清掉，事件循环可退出
   assert.strictEqual(g.guard.tick(), true);
   assert.strictEqual(g.calls.clickThrough, 1);
