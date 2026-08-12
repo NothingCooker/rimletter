@@ -1,5 +1,5 @@
 // src/main/monitor.js
-const { evaluateRules } = require('./rules');
+const { evaluateRules, neededSensors } = require('./rules');
 
 function createMonitor({ sensors, rules, onEvent, pollIntervalMs = 2000, getRules }) {
   let timer = null;
@@ -7,13 +7,15 @@ function createMonitor({ sensors, rules, onEvent, pollIntervalMs = 2000, getRule
   const getRulesFn = getRules || (() => rules);
 
   async function tick(now = Date.now()) {
+    const rules = getRulesFn();
     let snapshot;
     try {
-      snapshot = await sensors.snapshot();
+      // 只轮询已启用规则引用的传感器；没有任何启用规则时 snapshot({}) 为空、直接跳过
+      snapshot = await sensors.snapshot(neededSensors(rules));
     } catch (e) {
       return { alerts: [], recoveries: [], error: e };
     }
-    const { alerts, recoveries, nextState } = evaluateRules(getRulesFn(), snapshot, state, now);
+    const { alerts, recoveries, nextState } = evaluateRules(rules, snapshot, state, now);
     state = nextState;
     for (const a of alerts) onEvent({ type: 'alert', alert: a, snapshot, at: now });
     for (const r of recoveries) onEvent({ type: 'recovery', recovery: r, snapshot, at: now });

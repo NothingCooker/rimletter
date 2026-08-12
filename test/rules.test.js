@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { evaluateRules } = require('../src/main/rules');
+const { evaluateRules, neededSensors } = require('../src/main/rules');
 
 const T0 = 1_000_000;
 const mkCpuRule = (id, threshold, durationMs = 0) => ({
@@ -69,4 +69,19 @@ test('磁盘规则对每个盘符求值，告警含 mount', () => {
   const out = evaluateRules(rules, snap, {}, T0);
   assert.equal(out.alerts.length, 1);
   assert.equal(out.alerts[0].mount, 'C:');
+});
+
+test('neededSensors 只收集已启用规则引用的传感器（去重、保序）', () => {
+  const rules = [
+    mkCpuRule('r1', 85, 0),
+    { ...mkCpuRule('r2', 90, 0) }, // 与 r1 同 sensor：去重
+    { id: 'g1', sensor: 'gpu', metric: 'temp', operator: '>', threshold: 85, durationMs: 0, severity: 'ThreatSmall', label: '显卡过热', description: 'x', sound: 'auto', enabled: true },
+    { ...mkCpuRule('r3', 85, 0), enabled: false } // disabled 不计入
+  ];
+  assert.deepEqual(neededSensors(rules), ['cpu', 'gpu']);
+});
+
+test('neededSensors 无启用规则时返回空数组', () => {
+  const rules = [{ ...mkCpuRule('r1', 85, 0), enabled: false }];
+  assert.deepEqual(neededSensors(rules), []);
 });

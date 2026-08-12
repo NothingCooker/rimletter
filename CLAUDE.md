@@ -5,6 +5,7 @@
 桌面功能性摆件：复刻《边缘世界》(RimWorld) 屏幕右侧的**信息播报（Letter 信件系统）**，硬件占用过高时信从屏幕右缘滑入提醒。
 
 ## 实现状态（2026-08-10 v0.2.6 发布）
+- ✅ v0.2.10：修复鼠标周期性卡顿（GPU 传感器改异步 nvidia-smi 直查，不再同步阻塞主进程事件循环；只轮询已启用规则引用的传感器）；设置页标注「GPU 温度/占用仅支持 NVIDIA」；74 单元测试通过（`npm test`）
 - ✅ v0.2.9：修复 v0.2.8 悬停回归（悬停检测移回渲染层 `elementFromPoint`，移除跨进程几何比对；看门狗加硬上限杜绝锁死）；65 单元测试通过（`npm test`）
 - ⚠️ v0.2.8：**有重大 bug（鼠标无法悬停在信上），不建议下载**，功能与 v0.2.7 几乎相同，请用 v0.2.9
 - ✅ v0.2.7：本地 API 新增 **CORS 开关**（`api.cors` 默认关闭，浏览器端手动发信工具可用）；58 单元测试通过（`npm test`）
@@ -42,7 +43,7 @@ scripts/extract_assets.py  素材提取管线
 
 ## Git 与仓库
 - 远程仓库：https://github.com/NothingCooker/rimletter （公开，master 分支）
-- 当前版本：**v0.2.6**（已发布；Releases 见 https://github.com/NothingCooker/rimletter/releases）
+- 当前版本：**v0.2.10**（已发布；Releases 见 https://github.com/NothingCooker/rimletter/releases）
 - GitHub CLI：`C:\Program Files\GitHub CLI\gh.exe`（PATH 未刷新，需全路径）
 - 网络（dev-sidecar 代理）：Windows 系统代理 http=127.0.0.1:31180 / https=127.0.0.1:31181
 - git 已配置：`http.proxy=127.0.0.1:31180`、`https.proxy=127.0.0.1:31181`、`http.sslBackend=schannel`（信任 dev-sidecar 的 MITM 证书）

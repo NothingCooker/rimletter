@@ -1,6 +1,9 @@
 // src/main/main.js
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen } = require('electron');
 const path = require('node:path');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
+const execFileAsync = promisify(execFile);
 const { loadConfig, saveConfig } = require('./config');
 const { createOverlayMouseGuard } = require('./overlayMouse');
 const { createSensors } = require('./sensors');
@@ -40,7 +43,9 @@ function getEffectiveRules() {
 
 function getSensors() {
   const si = require('systeminformation');
-  const base = createSensors({ si });
+  // execFile（异步）让 GPU 读取走非阻塞路径，避免 systeminformation.graphics()
+  // 内部 execSync 同步阻塞主进程（实测 ~0.5s/次、每 2s 一次 → 鼠标卡顿）
+  const base = createSensors({ si, execFile: execFileAsync });
   const merged = { ...base };
   for (const [name, s] of Object.entries(registry.sensors)) {
     merged[name] = { name, read: s.read };
@@ -71,8 +76,9 @@ function reloadEverything() {
   }).catch(e => console.error('[plugin] load error:', e));
 
   if (monitor) monitor.stop();
-  // 动态 snapshot 门面：每次轮询都读取最新传感器（含插件异步注册的）
-  const dynamicSensors = { snapshot: () => getSensors().snapshot() };
+  // 动态 snapshot 门面：每次轮询都读取最新传感器（含插件异步注册的），
+  // 转发 keys 让 monitor 只轮询已启用规则引用的传感器
+  const dynamicSensors = { snapshot: (keys) => getSensors().snapshot(keys) };
   monitor = createMonitor({
     sensors: dynamicSensors,
     pollIntervalMs: config.pollIntervalMs,

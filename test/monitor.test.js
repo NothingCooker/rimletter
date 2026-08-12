@@ -26,6 +26,25 @@ test('tick 恢复事件含 recovery', async () => {
   assert.equal(events.filter(e => e.type === 'recovery').length, 1);
 });
 
+test('tick 只把已启用规则引用的传感器传给 snapshot', async () => {
+  const calls = [];
+  const sensors = { snapshot: async (keys) => { calls.push(keys); return { cpu: { load: 99 } }; } };
+  const rules = [{ id: 'r1', sensor: 'cpu', metric: 'load', operator: '>', threshold: 85, durationMs: 0, severity: 'ThreatBig', label: 'CPU', description: 'x', sound: 'auto', enabled: true }];
+  const monitor = createMonitor({ sensors, rules, onEvent: () => {} });
+  await monitor.tick();
+  assert.deepEqual(calls[0], ['cpu']);
+});
+
+test('tick 无启用规则时传空数组、不读任何传感器', async () => {
+  const calls = [];
+  const sensors = { snapshot: async (keys) => { calls.push(keys); return {}; } };
+  const rules = [{ id: 'r1', sensor: 'cpu', metric: 'load', operator: '>', threshold: 85, durationMs: 0, severity: 'ThreatBig', label: 'CPU', description: 'x', sound: 'auto', enabled: false }];
+  const monitor = createMonitor({ sensors, rules, onEvent: () => {} });
+  const result = await monitor.tick();
+  assert.deepEqual(calls[0], []);
+  assert.equal(result.alerts.length, 0);
+});
+
 test('start/stop 起停轮询，stop 后不再回调', async () => {
   const sensors = { snapshot: async () => ({ cpu: { load: 99 }, mem: { usedPct: 10 }, disk: [], gpu: {} }) };
   const rules = [];

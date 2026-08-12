@@ -58,6 +58,16 @@ function evaluateRules(rules, snapshot, prevState = {}, now = Date.now()) {
   return { alerts, recoveries, nextState };
 }
 
+// 返回「已启用规则引用的传感器」集合（去重、保序），供轮询只读取所需传感器，
+// 避免对未使用传感器（如 GPU 的 nvidia-smi 查询）做无谓轮询。
+function neededSensors(rules) {
+  const set = new Set();
+  for (const r of rules) {
+    if (r.enabled && r.sensor) set.add(r.sensor);
+  }
+  return [...set];
+}
+
 function buildAlert(rule, entries) {
   const alert = {
     ruleId: rule.id,
@@ -74,4 +84,4 @@ function buildAlert(rule, entries) {
   return alert;
 }
 
-module.exports = { evaluateRules, compare };
+module.exports = { evaluateRules, compare, neededSensors };

@@ -148,7 +148,8 @@ function renderRules() {
   rows += '</table>';
   el.innerHTML = rows +
     '<div style="margin-top:10px"><button class="rw-btn" id="add-rule">＋ 添加规则</button></div>' +
-    '<div id="rule-editor" class="rw-editor" style="display:none"></div>';
+    '<div id="rule-editor" class="rw-editor" style="display:none"></div>' +
+    '<div style="margin-top:10px;font-size:11px;color:#7f8a96">提示：GPU 温度/占用监控仅支持 NVIDIA 显卡（通过 nvidia-smi 读取）。</div>';
 
   el.querySelectorAll('[data-enable]').forEach(cb => cb.addEventListener('click', () => {
     const r = config.rules.find(x => x.id === cb.dataset.id);
@@ -182,6 +183,8 @@ function openEditor(id) {
       '<span class="rw-lbl">指标</span><select class="rw-select" id="ed-metric">' + metricOpts + '</select>' +
       '<span class="rw-lbl">比较</span><select class="rw-select" id="ed-op">' + opOpts + '</select>' +
       '<input class="rw-input" id="ed-threshold" value="' + r.threshold + '" style="width:60px"></div>' +
+    '<div class="rw-row" id="ed-gpu-hint" style="' + (r.sensor === 'gpu' ? '' : 'display:none') + ';font-size:11px;color:#c8a06a">' +
+      '<span class="rw-lbl" style="width:auto">⚠ GPU 温度/占用仅支持 NVIDIA 显卡</span></div>' +
     '<div class="rw-row"><span class="rw-lbl">持续时长</span><input class="rw-input" id="ed-duration" value="' + (r.durationMs / 1000) + '" style="width:50px">' +
       '<span class="rw-gray">秒（0=立即，防瞬时尖峰误报）</span></div>' +
     '<div class="rw-row"><span class="rw-lbl">紧急度</span><select class="rw-select" id="ed-sev">' + sevOpts + '</select></div>' +
@@ -196,6 +199,8 @@ function openEditor(id) {
     const s = e.target.value;
     document.getElementById('ed-metric').innerHTML = (SENSOR_METRICS[s] || []).map(m =>
       '<option value="' + m.k + '">' + m.label + '</option>').join('');
+    const hint = document.getElementById('ed-gpu-hint');
+    if (hint) hint.style.display = (s === 'gpu') ? '' : 'none';
   });
   document.getElementById('ed-save').addEventListener('click', () => {
     const obj = {

@@ -32,6 +32,32 @@ test('gpu 读取温度与占用（温度可缺失时置 undefined）', async () 
   assert.equal(out.load, 77);
 });
 
+test('gpu 用异步 nvidia-smi 快速路径读取（不依赖 si.graphics、不阻塞事件循环）', async () => {
+  // promisify(execFile) 实际解析为 { stdout, stderr }，mock 贴合生产返回形状
+  const execFile = async (file, args) => { assert.equal(file, 'nvidia-smi'); return { stdout: '1, 42\r\n', stderr: '' }; };
+  const sensors = createSensors({ si: {}, execFile });
+  const out = await sensors.gpu.read();
+  assert.equal(out.load, 1);
+  assert.equal(out.temp, 42);
+});
+
+test('gpu nvidia-smi 输出多行时只取第一块 GPU', async () => {
+  const execFile = async () => ({ stdout: '5, 61\n3, 52\n', stderr: '' });
+  const sensors = createSensors({ si: {}, execFile });
+  const out = await sensors.gpu.read();
+  assert.equal(out.load, 5);
+  assert.equal(out.temp, 61);
+});
+
+test('gpu nvidia-smi 不可用时回退 si.graphics（温度缺失置 undefined）', async () => {
+  const execFile = async () => { throw new Error('ENOENT: nvidia-smi'); };
+  const si = { graphics: async () => ({ controllers: [{ temperatureGpu: null, utilizationGpu: 77 }] }) };
+  const sensors = createSensors({ si, execFile });
+  const out = await sensors.gpu.read();
+  assert.equal(out.temp, undefined);
+  assert.equal(out.load, 77);
+});
+
 test('sensors 提供 snapshot 接口，返回全部传感器值', async () => {
   const mock = {
     currentLoad: async () => ({ currentLoad: 10 }),
@@ -45,4 +71,22 @@ test('sensors 提供 snapshot 接口，返回全部传感器值', async () => {
   assert.equal(snap.mem.usedPct, 50);
   assert.ok(Array.isArray(snap.disk));
   assert.ok(snap.gpu);
+});
+
+test('snapshot(keys) 只读取指定传感器，其余不读', async () => {
+  const called = [];
+  const mk = name => async () => { called.push(name); return {}; };
+  const mock = { currentLoad: mk('cpu'), mem: mk('mem'), fsSize: mk('disk'), graphics: mk('gpu') };
+  const sensors = createSensors({ si: mock });
+  const snap = await sensors.snapshot(['cpu', 'gpu']);
+  assert.deepEqual(called, ['cpu', 'gpu']);
+  assert.deepEqual(Object.keys(snap).sort(), ['cpu', 'gpu']);
+});
+
+test('snapshot(keys) 未知传感器（如插件传感器）返回 undefined，规则安全跳过', async () => {
+  const mock = { currentLoad: async () => ({}), mem: async () => ({}), fsSize: async () => ([]), graphics: async () => ({}) };
+  const sensors = createSensors({ si: mock });
+  const snap = await sensors.snapshot(['cpu', 'unknown-plugin-sensor']);
+  assert.ok('cpu' in snap);
+  assert.equal(snap['unknown-plugin-sensor'], undefined);
 });
