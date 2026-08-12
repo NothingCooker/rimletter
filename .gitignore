@@ -1,3 +1,7 @@
 node_modules/
 dist/
 *.log
+
+# 本地项目文档，不纳入版本控制
+CLAUDE.md
+PROJECT.md
