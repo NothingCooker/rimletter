@@ -1,6 +1,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { isSafeId, buildChannelUrls, parseManifest } = require('../src/main/market');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { isSafeId, buildChannelUrls, parseManifest, createMarket } = require('../src/main/market');
 
 test('isSafeId 接受字母数字下划线连字符', () => {
   assert.equal(isSafeId('weather'), true);
@@ -50,4 +53,150 @@ test('parseManifest 非 JSON / 缺 plugins / 非法条目均抛错', () => {
   assert.throws(() => parseManifest('{"plugins":[]}'), /plugins/);
   assert.throws(() => parseManifest('{"plugins":[{"id":"a/b","file":"x"}]}'), /非法/);
   assert.throws(() => parseManifest('{"plugins":[{"id":"ok","file":""}]}'), /非法/);
+});
+
+test('parseManifest 条目 null 抛错', () => {
+  assert.throws(() => parseManifest('{"plugins":[null]}'), /非法/);
+});
+
+test('parseManifest 条目缺 file 抛错', () => {
+  assert.throws(() => parseManifest('{"plugins":[{"id":"ok"}]}'), /file 缺失/);
+});
+
+test('parseManifest 条目 file 非字符串抛错', () => {
+  assert.throws(() => parseManifest('{"plugins":[{"id":"ok","file":123}]}'), /file 缺失/);
+});
+
+// ===== createMarket =====
+
+function makeMarket({ repo = 'o/plugins', branch = 'main', fetchImpl, pluginsDir }) {
+  const getConfig = () => ({ market: { repo, branch }, plugins: { disabled: ['old'] } });
+  let changed = 0;
+  const market = createMarket({
+    getConfig,
+    configDir: path.dirname(pluginsDir),
+    fetch: fetchImpl,
+    onChanged: () => { changed++; }
+  });
+  return { market, changed: () => changed };
+}
+
+// 按 URL 精确路由的 fetch mock：route[url] = {ok, text} 或 {error}
+function routeFetch(route) {
+  return async (url) => {
+    const r = route[url];
+    if (!r) throw new Error('fetch not stubbed: ' + url);
+    if (r.error) throw r.error;
+    return { ok: r.ok !== false, status: r.status || 200, text: async () => r.text };
+  };
+}
+
+const MANIFEST = JSON.stringify({ version: 1, plugins: [
+  { id: 'weather', name: '天气', desc: 'd', author: 'A', file: 'plugin-weather/plugin-weather.js', version: '1.0.0' }
+]});
+
+test('list 经 jsdelivr 拉取清单并标已安装', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  fs.mkdirSync(path.join(dir, 'plugins'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'plugins', 'weather.js'), 'module.exports=()=>{}');
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fetchImpl = routeFetch({ [urls[0].url]: { text: MANIFEST } });
+  const { market } = makeMarket({ fetchImpl, pluginsDir: path.join(dir, 'plugins') });
+  const list = await market.list();
+  assert.equal(list.length, 1);
+  assert.equal(list[0].id, 'weather');
+  assert.equal(list[0].installed, true);
+  assert.equal(list[0].channel, 'jsdelivr');
+});
+
+test('list 的 jsdelivr 失败时回退 raw', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  fs.mkdirSync(path.join(dir, 'plugins'), { recursive: true });
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fetchImpl = routeFetch({
+    [urls[0].url]: { error: new Error('jsdelivr down') },
+    [urls[1].url]: { text: MANIFEST }
+  });
+  const { market } = makeMarket({ fetchImpl, pluginsDir: path.join(dir, 'plugins') });
+  const list = await market.list();
+  assert.equal(list[0].channel, 'raw');
+});
+
+test('install 下载 .js 落位并启用 + 触发 onChanged', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fileUrls = buildChannelUrls('o/plugins', 'main', 'plugin-weather/plugin-weather.js');
+  const fetchImpl = routeFetch({
+    [urls[0].url]: { text: MANIFEST },
+    [fileUrls[0].url]: { text: 'module.exports=async()=>{};' }
+  });
+  const { market, changed } = makeMarket({ fetchImpl, pluginsDir });
+  const res = await market.install('weather');
+  assert.equal(res.ok, true);
+  assert.equal(fs.readFileSync(path.join(pluginsDir, 'weather.js'), 'utf-8'), 'module.exports=async()=>{};');
+  assert.equal(changed(), 1);
+  assert.ok(!fs.existsSync(path.join(pluginsDir, '.tmp-weather.js')), '临时文件已清理');
+});
+
+test('install 非法 id 直接拒绝，且不触发 onChanged', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const { market, changed } = makeMarket({ fetchImpl: async () => { throw new Error('不应调用'); }, pluginsDir: path.join(dir, 'plugins') });
+  await assert.rejects(() => market.install('../evil'), /非法插件 id/);
+  assert.equal(changed(), 0);
+});
+
+test('install 市场不存在的 id 拒绝', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fetchImpl = routeFetch({ [urls[0].url]: { text: MANIFEST } });
+  const { market } = makeMarket({ fetchImpl, pluginsDir: path.join(dir, 'plugins') });
+  await assert.rejects(() => market.install('nope'), /市场不存在/);
+});
+
+test('uninstall 删除文件并触发 onChanged', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginsDir, 'weather.js'), 'x');
+  const { market, changed } = makeMarket({ fetchImpl: async () => { throw new Error('uninstall 不应下载'); }, pluginsDir });
+  await market.uninstall('weather');
+  assert.ok(!fs.existsSync(path.join(pluginsDir, 'weather.js')));
+  assert.equal(changed(), 1);
+});
+
+test('updateAll 重装所有已安装插件', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginsDir, 'weather.js'), 'old');
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fileUrls = buildChannelUrls('o/plugins', 'main', 'plugin-weather/plugin-weather.js');
+  const fetchImpl = routeFetch({
+    [urls[0].url]: { text: MANIFEST },
+    [fileUrls[0].url]: { text: 'new-content' }
+  });
+  const { market } = makeMarket({ fetchImpl, pluginsDir });
+  const results = await market.updateAll();
+  assert.equal(results.length, 1);
+  assert.equal(results[0].ok, true);
+  assert.equal(fs.readFileSync(path.join(pluginsDir, 'weather.js'), 'utf-8'), 'new-content');
+});
+
+test('install 下载失败时无残留临时文件', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fileUrls = buildChannelUrls('o/plugins', 'main', 'plugin-weather/plugin-weather.js');
+  const fetchImpl = routeFetch({
+    [urls[0].url]: { text: MANIFEST },
+    [urls[1].url]: { text: MANIFEST },
+    [fileUrls[0].url]: { error: new Error('down') },
+    [fileUrls[1].url]: { error: new Error('down') }
+  });
+  const { market } = makeMarket({ fetchImpl, pluginsDir });
+  await assert.rejects(() => market.install('weather'), /下载失败/);
+  assert.ok(!fs.existsSync(path.join(pluginsDir, '.tmp-weather.js')));
 });
