@@ -90,3 +90,26 @@ test('snapshot(keys) 未知传感器（如插件传感器）返回 undefined，�
   assert.ok('cpu' in snap);
   assert.equal(snap['unknown-plugin-sensor'], undefined);
 });
+
+test('snapshot 全量路径包含插件传感器（extraSensors）', async () => {
+  const mock = { currentLoad: async () => ({ load: 1 }), mem: async () => ({}), fsSize: async () => ([]), graphics: async () => ({}) };
+  const extra = () => ({ 'cpu-temp': { name: 'cpu-temp', read: async () => ({ temp: 52, maxCore: 61 }) } });
+  const sensors = createSensors({ si: mock, extraSensors: extra });
+  const snap = await sensors.snapshot();
+  assert.deepEqual(snap['cpu-temp'], { temp: 52, maxCore: 61 });
+});
+
+test('snapshot(keys) 按需轮询插件传感器', async () => {
+  const mock = { currentLoad: async () => ({ load: 1 }), mem: async () => ({}), fsSize: async () => ([]), graphics: async () => ({}) };
+  const extra = () => ({ 'cpu-temp': { name: 'cpu-temp', read: async () => ({ temp: 52 }) } });
+  const sensors = createSensors({ si: mock, extraSensors: extra });
+  const snap = await sensors.snapshot(['cpu-temp']);
+  assert.equal(snap['cpu-temp'].temp, 52);
+});
+
+test('snapshot(keys) 未注册传感器（extraSensors 不含）返回 undefined 且不报错', async () => {
+  const mock = { currentLoad: async () => ({ load: 1 }), mem: async () => ({}), fsSize: async () => ([]), graphics: async () => ({}) };
+  const sensors = createSensors({ si: mock, extraSensors: () => ({}) });
+  const snap = await sensors.snapshot(['ghost']);
+  assert.equal(snap['ghost'], undefined);
+});

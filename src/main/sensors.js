@@ -1,5 +1,5 @@
 // src/main/sensors.js
-function createSensors({ si, execFile }) {
+function createSensors({ si, execFile, extraSensors }) {
   const cpu = {
     name: 'CPU',
     async read() {
@@ -61,13 +61,22 @@ function createSensors({ si, execFile }) {
       };
     }
   };
-  const BASE_SENSORS = ['cpu', 'mem', 'disk', 'gpu'];
-  // keys 可选：传入时只读取这些传感器（轮询按规则按需读取，避免无谓开销）；
-  // 不传时保持原有行为，读取全部基础传感器（on-demand 调用，如设置页/API/插件 getState）。
-  // 未知传感器（如插件传感器）返回 undefined，规则引擎对其安全跳过。
-  async function snapshot(keys) {
+  // 派发表：内置 + 插件（extraSensors 返回 {name → {read}}）。
+  // v0.3.1 修复：插件 registerSensor 的传感器此前进不了 snapshot 的 map → 规则永不触发。
+  function buildMap() {
     const map = { cpu: () => cpu.read(), mem: () => mem.read(), disk: () => disk.read(), gpu: () => gpu.read() };
-    const wanted = keys == null ? BASE_SENSORS : keys;
+    if (typeof extraSensors === 'function') {
+      for (const [name, s] of Object.entries(extraSensors())) {
+        if (s && typeof s.read === 'function') map[name] = () => s.read();
+      }
+    }
+    return map;
+  }
+  // keys 可选：传入时只读这些传感器（轮询按规则按需读取）；缺省读全部（含插件）。
+  // 未知传感器（如已卸载插件的残留规则）返回 undefined，规则引擎对其安全跳过。
+  async function snapshot(keys) {
+    const map = buildMap();
+    const wanted = keys == null ? Object.keys(map) : keys;
     const results = await Promise.all(wanted.map(k => (map[k] ? map[k]() : undefined)));
     const out = {};
     wanted.forEach((k, i) => { out[k] = results[i]; });
