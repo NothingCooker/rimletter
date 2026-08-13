@@ -45,3 +45,21 @@ test('update.enabled 可持久化关闭', () => {
   const again = loadConfig(dir);
   assert.equal(again.update.enabled, false);
 });
+
+test('update.proxyChannels 默认含 gh.ddlc.top 与 ghproxy.net', () => {
+  assert.deepEqual(DEFAULT_CONFIG.update.proxyChannels, ['https://gh.ddlc.top', 'https://ghproxy.net']);
+});
+
+test('market 默认指向官方插件仓库 main 分支', () => {
+  assert.equal(DEFAULT_CONFIG.market.repo, 'NothingCooker/rimletter-official-plugins');
+  assert.equal(DEFAULT_CONFIG.market.branch, 'main');
+});
+
+test('market 配置可持久化覆盖', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-'));
+  const cfg = loadConfig(dir);
+  cfg.market.repo = 'me/plugins';
+  saveConfig(dir, cfg);
+  const again = loadConfig(dir);
+  assert.equal(again.market.repo, 'me/plugins');
+});
