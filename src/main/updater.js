@@ -64,14 +64,17 @@ function createUpdater(deps) {
     let idx = 0;
     function attempt() {
       const ch = channels[idx];
-      try { ch.apply(); } catch (e) { /* setFeedURL 异常也视为该通道失败，继续回退 */ }
+      let feedErr = null;
+      try { ch.apply(); } catch (e) { feedErr = e; }
+      if (feedErr) return onFail(feedErr);
       setState({ code: 'checking', channel: ch.label });
       return autoUpdater.checkForUpdates()
         .then(() => { /* 成功：事件监听会置最终状态 */ })
-        .catch((err) => {
-          if (idx < channels.length - 1) { idx++; return attempt(); }
-          setState({ code: 'error', error: (err && err.message) || String(err) });
-        });
+        .catch(onFail);
+    }
+    function onFail(err) {
+      if (idx < channels.length - 1) { idx++; return attempt(); }
+      setState({ code: 'error', error: (err && err.message) || String(err) });
     }
     return attempt().finally(() => { checking = false; });
   }

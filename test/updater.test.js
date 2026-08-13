@@ -151,3 +151,22 @@ test('下载阶段错误不换通道', async () => {
   assert.equal(au.feedHistory.length, historyLen, '错误事件不触发换通道');
   assert.equal(seen[seen.length - 1].code, 'error');
 });
+
+test('setFeedURL 抛错时视为该通道失败并换下一通道', async () => {
+  const au = mockAutoUpdater({ failFirst: 0 });
+  // 首个通道的 setFeedURL 抛错
+  let throwOnApply = true;
+  au.setFeedURL = (opts) => {
+    (au.feedHistory = au.feedHistory || []).push(opts);
+    if (throwOnApply) { throwOnApply = false; throw new Error('bad feed url'); }
+  };
+  const seen = [];
+  const updater = createUpdater({ autoUpdater: au, proxyChannels: ['https://p1', 'https://p2'], publishRepo: 'o/r', onStatus: s => seen.push(s) });
+  updater.init();
+  const p = updater.checkNow();
+  await new Promise(r => setTimeout(r, 0));
+  au.emit('update-not-available');
+  await p;
+  assert.deepEqual(au.feedHistory.map(f => f.provider), ['generic', 'generic'], '抛错后仍切到 p2');
+  assert.equal(seen[seen.length - 1].code, 'uptodate');
+});
