@@ -5,6 +5,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const execFileAsync = promisify(execFile);
 const { loadConfig, saveConfig } = require('./config');
+const { createLogger } = require('./log');
 const { createOverlayMouseGuard } = require('./overlayMouse');
 const { createSensors } = require('./sensors');
 const { createMonitor } = require('./monitor');
@@ -21,6 +22,7 @@ let settingsWin = null;
 let tray = null;
 let config = null;
 let configDir = null;
+let log = null; // 文件日志（whenReady 后创建，见 src/main/log.js）
 let monitor = null;
 let apiServer = null;
 let registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHandlers: {}, pluginActions: {} };
@@ -53,6 +55,7 @@ function getSensors() {
 
 function triggerLetter({ severity, title, description, sound }) {
   const letter = formatLetter(severity, title, description, { sound: sound || undefined });
+  if (log) log.info('发信', severity, title);
   send('letter:new', letter);
 }
 
@@ -68,10 +71,10 @@ function reloadEverything() {
   pluginResults.then(list => {
     lastPluginResults = list;
     list.forEach(p => {
-      if (p.error) console.error('[plugin:' + p.name + '] load error:', p.error);
-      else console.log('[plugin:' + p.name + '] loaded');
+      if (p.error) { if (log) log.error('插件加载失败', p.name, p.error); else console.error('[plugin:' + p.name + '] load error:', p.error); }
+      else { if (log) log.info('插件已加载', p.name); else console.log('[plugin:' + p.name + '] loaded'); }
     });
-  }).catch(e => console.error('[plugin] load error:', e));
+  }).catch(e => { if (log) log.error('插件加载异常', e); else console.error('[plugin] load error:', e); });
 
   if (monitor) monitor.stop();
   // 动态 snapshot 门面：每次轮询都读取最新传感器（含插件异步注册的），
@@ -81,6 +84,8 @@ function reloadEverything() {
     sensors: dynamicSensors,
     pollIntervalMs: config.pollIntervalMs,
     getRules: getEffectiveRules,
+    recoveriesEnabled: () => !!config.recoveryNotifications,
+    onError: (e) => { if (log) log.error('轮询异常', e); },
     onEvent: (e) => {
       if (e.type === 'alert') {
         triggerLetter({ severity: e.alert.severity, title: e.alert.label, description: e.alert.description, sound: e.alert.sound });
@@ -121,7 +126,11 @@ function makePluginApiFor(name) {
       const m = registry.pluginActions[name] || (registry.pluginActions[name] = {});
       m[action] = fn;
     },
-    logger: { info: (...a) => console.log('[plugin]', ...a), warn: (...a) => console.warn('[plugin]', ...a), error: (...a) => console.error('[plugin]', ...a) }
+    logger: {
+      info: (...a) => (log ? log.info('[plugin:' + name + ']', ...a) : console.log('[plugin]', ...a)),
+      warn: (...a) => (log ? log.warn('[plugin:' + name + ']', ...a) : console.warn('[plugin]', ...a)),
+      error: (...a) => (log ? log.error('[plugin:' + name + ']', ...a) : console.error('[plugin]', ...a))
+    }
   };
 }
 
@@ -132,7 +141,7 @@ function initUpdater() {
     isEnabled: () => !!(config.update && config.update.enabled),
     proxyChannels: (config.update && config.update.proxyChannels) || [],
     publishRepo: 'NothingCooker/rimletter',
-    onStatus: (st) => sendToSettings('update:status', st),
+    onStatus: (st) => { if (log) log.info('更新状态', st.code, st.version || ''); sendToSettings('update:status', st); },
     onDownloaded: () => triggerLetter({
       severity: 'NeutralEvent',
       title: 'RimLetter 新版本已下载',
@@ -353,6 +362,9 @@ ipcMain.handle('update:install', () => { if (updater) updater.quitAndInstall(); 
 app.whenReady().then(() => {
   configDir = app.getPath('userData');
   config = loadConfig(configDir);
+  log = createLogger({ dir: path.join(configDir, 'logs'), level: (config.log && config.log.level) || 'info' });
+  log.info('RimLetter 启动', 'v' + app.getVersion(), 'userData=' + configDir);
+  log.info('启用规则数', getEffectiveRules().length, '轮询间隔', config.pollIntervalMs + 'ms');
   market = createMarket({
     getConfig: () => config,              // 必须返回 live config 对象（非深拷贝），enablePlugin 会原地改它
     setConfig: (cfg) => saveConfig(configDir, cfg),  // install 启用后立即持久化
@@ -378,9 +390,14 @@ app.whenReady().then(() => {
       reload: () => { reloadEverything(); return { ok: true }; }
     });
     apiServer.start(config.api.port);
-    console.log('API 已启动 http://127.0.0.1:' + config.api.port + '  token=' + config.api.token);
+    if (log) log.info('API 已启动', 'http://127.0.0.1:' + config.api.port);
+    else console.log('API 已启动 http://127.0.0.1:' + config.api.port + '  token=' + config.api.token);
   }
 });
 
 app.on('window-all-closed', () => { /* 常驻后台 */ });
 app.on('before-quit', () => { if (monitor) monitor.stop(); if (apiServer) apiServer.stop(); });
+
+// 崩溃兜底：写入日志便于排查（log 未初始化时静默）
+process.on('uncaughtException', (err) => { if (log) log.error('未捕获异常', err); });
+process.on('unhandledRejection', (reason) => { if (log) log.error('未处理的 Promise 拒绝', reason); });

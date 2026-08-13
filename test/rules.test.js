@@ -85,3 +85,60 @@ test('neededSensors 无启用规则时返回空数组', () => {
   const rules = [{ ...mkCpuRule('r1', 85, 0), enabled: false }];
   assert.deepEqual(neededSensors(rules), []);
 });
+
+// ============ 告警/恢复频繁交替修复 ============
+
+test('观察期(watching)数值回落：静默放弃，不发恢复信', () => {
+  const rules = [mkCpuRule('r1', 85, 5000)];
+  const prev = { r1: { status: 'watching', since: T0 - 1000 } };
+  const out = evaluateRules(rules, { cpu: { load: 80 } }, prev, T0);
+  assert.equal(out.recoveries.length, 0);
+  assert.equal(out.nextState.r1.status, 'idle');
+});
+
+test('告警后回落但未到回落线（默认回落 5% → 80.75）：保持告警、不发恢复', () => {
+  const rules = [mkCpuRule('r1', 85, 0)];
+  const prev = { r1: { status: 'alerting', since: T0 - 2000 } };
+  // 84 < 85 但仍 > 85×0.95=80.75 → 仍视为超限持续，保持告警
+  const out = evaluateRules(rules, { cpu: { load: 84 } }, prev, T0);
+  assert.equal(out.recoveries.length, 0);
+  assert.equal(out.nextState.r1.status, 'alerting');
+});
+
+test('告警后降到回落线以下（80）才发恢复信并复位', () => {
+  const rules = [mkCpuRule('r1', 85, 0)];
+  const prev = { r1: { status: 'alerting', since: T0 - 2000 } };
+  const out = evaluateRules(rules, { cpu: { load: 80 } }, prev, T0);
+  assert.equal(out.recoveries.length, 1);
+  assert.equal(out.nextState.r1.status, 'idle');
+});
+
+test('recoverPct=0 时回落即恢复（无回落门槛，兼容旧行为）', () => {
+  const rules = [{ ...mkCpuRule('r1', 85, 0), recoverPct: 0 }];
+  const prev = { r1: { status: 'alerting', since: T0 - 2000 } };
+  const out = evaluateRules(rules, { cpu: { load: 84 } }, prev, T0);
+  assert.equal(out.recoveries.length, 1);
+  assert.equal(out.nextState.r1.status, 'idle');
+});
+
+test('“<”规则：低于阈值未到回落线保持告警，超过回落线才恢复', () => {
+  const rules = [{ id: 'r1', sensor: 'disk', metric: 'freeGB', operator: '<', threshold: 10, durationMs: 0, severity: 'NeutralEvent', label: '磁盘不足', description: 'x', sound: 'auto', enabled: true }];
+  const prev = { r1: { status: 'alerting', since: T0 - 2000 } };
+  // 回落线 = 10×1.05 = 10.5；10.3 仍低于回落线 → 保持告警
+  const inBand = evaluateRules(rules, { disk: [{ mount: 'C:', freeGB: 10.3 }] }, prev, T0);
+  assert.equal(inBand.recoveries.length, 0);
+  assert.equal(inBand.nextState.r1.status, 'alerting');
+  // 11 > 10.5 → 恢复
+  const recovered = evaluateRules(rules, { disk: [{ mount: 'C:', freeGB: 11 }] }, prev, T0);
+  assert.equal(recovered.recoveries.length, 1);
+  assert.equal(recovered.nextState.r1.status, 'idle');
+});
+
+test('多实例（磁盘）：仍有盘在回落带内时不发恢复信', () => {
+  const rules = [{ id: 'd1', sensor: 'disk', metric: 'freeGB', operator: '<', threshold: 10, durationMs: 0, severity: 'NeutralEvent', label: '磁盘不足', description: 'x', sound: 'auto', enabled: true }];
+  const prev = { d1: { status: 'alerting', since: T0 - 2000 } };
+  const snap = { disk: [{ mount: 'C:', freeGB: 10.3 }, { mount: 'D:', freeGB: 200 }] }; // C: 仍低于回落线 10.5
+  const out = evaluateRules(rules, snap, prev, T0);
+  assert.equal(out.recoveries.length, 0);
+  assert.equal(out.nextState.d1.status, 'alerting');
+});

@@ -48,6 +48,7 @@ init();
 function renderGeneral() {
   const el = document.getElementById('pane-general');
   const iconPct = ((config.appearance && config.appearance.iconSize || 64) - 32) / (128 - 32) * 100;
+  const curLogLevel = (config.log && config.log.level) || 'info';
   el.innerHTML =
     sliderRow('轮询间隔', 'pollIntervalMs', config.pollIntervalMs, 1000, 10000, '毫秒') +
     sliderRow('自动消失', 'autoDismissMs', config.autoDismissMs, 5000, 60000, '毫秒') +
@@ -68,6 +69,14 @@ function renderGeneral() {
         '<div class="rw-thumb" style="left:' + (config.sound.volume * 100) + '%"></div></div>' +
       '<span class="rw-gray" id="val-sound.volume">' + Math.round(config.sound.volume * 100) + '%</span></div>' +
     '<div class="rw-sep"></div>' +
+    '<div class="rw-row"><span class="rw-lbl">恢复正常播报</span>' +
+      '<span class="rw-cb' + (config.recoveryNotifications ? ' on' : '') + '" data-toggle="recoveryNotifications"></span>' +
+      '<span class="rw-gray">' + (config.recoveryNotifications ? '开启' : '关闭') + '</span></div>' +
+    '<div class="rw-row"><span class="rw-lbl">日志级别</span>' +
+      '<select class="rw-select" id="log-level">' + ['debug', 'info', 'warn', 'error'].map(l =>
+        '<option' + (curLogLevel === l ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
+      '<span class="rw-gray">写入 userData/logs/rimletter.log，重启生效</span></div>' +
+    '<div class="rw-sep"></div>' +
     '<div class="rw-row"><span class="rw-lbl">自动更新</span>' +
       '<span class="rw-cb' + (config.update.enabled ? ' on' : '') + '" data-toggle="update.enabled"></span>' +
       '<span class="rw-gray">' + (config.update.enabled ? '开启' : '关闭') + '</span></div>' +
@@ -84,6 +93,14 @@ function renderGeneral() {
     cb.classList.toggle('on', !cur);
     cb.nextElementSibling.textContent = !cur ? '开启' : '关闭';
   }));
+
+  // 日志级别选择（重启生效）
+  const logLevelEl = document.getElementById('log-level');
+  if (logLevelEl) logLevelEl.addEventListener('change', () => {
+    config.log = config.log || {};
+    config.log.level = logLevelEl.value;
+    persistConfig();
+  });
 
   // 自动更新状态与按钮
   const statusEl = document.getElementById('update-status');
@@ -142,7 +159,7 @@ function renderRules() {
     const sev = SEVERITIES.find(s => s.key === r.severity) || SEVERITIES[3];
     rows += '<tr><td><span class="rw-cb' + (r.enabled ? ' on' : '') + '" data-id="' + r.id + '" data-enable></span></td>' +
       '<td>' + sensorLabel(r.sensor) + '</td>' +
-      '<td>' + metricLabel(r) + ' ' + r.operator + ' ' + r.threshold + (r.durationMs > 0 ? ' 持续 ' + (r.durationMs / 1000) + 's' : '') + '</td>' +
+      '<td>' + metricLabel(r) + ' ' + r.operator + ' ' + r.threshold + (r.durationMs > 0 ? ' 持续 ' + (r.durationMs / 1000) + 's' : '') + (r.recoverPct > 0 ? ' 回落 ' + r.recoverPct + '%' : '') + '</td>' +
       '<td><span class="rw-dot" style="background:' + sev.color + '"></span>' + sev.label + '</td>' +
       '<td>' + esc(r.label) + '</td>' +
       '<td><button class="rw-btn small" data-edit="' + r.id + '">编辑</button> <button class="rw-btn small" data-del="' + r.id + '">删</button></td></tr>';
@@ -195,6 +212,8 @@ function renderRuleEditor(r) {
       '<span class="rw-lbl" style="width:auto">⚠ GPU 温度/占用仅支持 NVIDIA 显卡</span></div>' +
     '<div class="rw-row"><span class="rw-lbl">持续时长</span><input class="rw-input" id="ed-duration" value="' + (r.durationMs / 1000) + '" style="width:50px">' +
       '<span class="rw-gray">秒（0=立即，防瞬时尖峰误报）</span></div>' +
+    '<div class="rw-row"><span class="rw-lbl">回落门槛</span><input class="rw-input" id="ed-recover-pct" value="' + (r.recoverPct != null ? r.recoverPct : 5) + '" style="width:50px">' +
+      '<span class="rw-gray">%（告警后数值需降到阈值以下此比例才允许再次告警/发恢复信，防频繁交替）</span></div>' +
     '<div class="rw-row"><span class="rw-lbl">紧急度</span><select class="rw-select" id="ed-sev">' + sevOpts + '</select></div>' +
     '<div class="rw-row"><span class="rw-lbl">标题</span><input class="rw-input" id="ed-label" value="' + esc(r.label) + '" style="width:220px"></div>' +
     '<div class="rw-row"><span class="rw-lbl">描述</span><input class="rw-input" id="ed-desc" value="' + esc(r.description || '') + '" style="width:220px"></div>' +
@@ -216,6 +235,7 @@ function renderRuleEditor(r) {
       sensor: val('ed-sensor'), metric: val('ed-metric'), operator: val('ed-op'),
       threshold: Number(val('ed-threshold')) || 0,
       durationMs: (Number(val('ed-duration')) || 0) * 1000,
+      recoverPct: Number(val('ed-recover-pct')) || 0,
       severity: val('ed-sev'), label: val('ed-label') || '未命名', description: val('ed-desc'),
       sound: val('ed-sound') || 'auto', enabled: true
     };
@@ -259,7 +279,7 @@ async function refreshPluginSensorMetrics() {
 }
 
 function defaultRule() {
-  return { id: '', sensor: 'cpu', metric: 'load', operator: '>', threshold: 85, durationMs: 5000, severity: 'NegativeEvent', label: '新规则', description: '', sound: 'auto', enabled: true };
+  return { id: '', sensor: 'cpu', metric: 'load', operator: '>', threshold: 85, durationMs: 5000, recoverPct: 5, severity: 'NegativeEvent', label: '新规则', description: '', sound: 'auto', enabled: true };
 }
 function val(id) { return document.getElementById(id).value; }
 function sensorLabel(s) { return { cpu: 'CPU', mem: '内存', disk: '磁盘', gpu: 'GPU' }[s] || s; }
@@ -268,7 +288,7 @@ function metricLabel(r) { const m = (SENSOR_METRICS[r.sensor] || []).find(x => x
 // ============ 插件管理 ============
 const PLUGIN_DOCS = [
   ['api.registerSensor(name, fn)', '注册自定义传感器。fn 异步返回 { value } 或 { value, unit }，会出现在规则引擎的传感器下拉里。'],
-  ['api.registerRule(rule)', '注册规则，结构同内置规则：{sensor, metric, operator, threshold, durationMs, severity, label, description, sound, enabled}。'],
+  ['api.registerRule(rule)', '注册规则，结构同内置规则：{sensor, metric, operator, threshold, durationMs, recoverPct, severity, label, description, sound, enabled}（recoverPct 为回落门槛%，默认 5，0=不设）。'],
   ['api.letter({severity, title, description, sound})', '主动触发一封播报。'],
   ['api.on(event, handler)', '订阅事件：alert（告警）、recovered（恢复）、rule。'],
   ['api.getState()', '读取当前全部传感器实时值（Promise）。'],
