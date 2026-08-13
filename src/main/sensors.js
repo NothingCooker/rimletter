@@ -77,7 +77,7 @@ function createSensors({ si, execFile, extraSensors }) {
   async function snapshot(keys) {
     const map = buildMap();
     const wanted = keys == null ? Object.keys(map) : keys;
-    const results = await Promise.all(wanted.map(k => (map[k] ? map[k]() : undefined)));
+    const results = await Promise.all(wanted.map(k => (map[k] ? map[k]().catch(() => undefined) : undefined)));
     const out = {};
     wanted.forEach((k, i) => { out[k] = results[i]; });
     return out;

@@ -113,3 +113,21 @@ test('snapshot(keys) 未注册传感器（extraSensors 不含）返回 undefined
   const snap = await sensors.snapshot(['ghost']);
   assert.equal(snap['ghost'], undefined);
 });
+
+test('snapshot(keys) 只请求内置传感器时不轮询插件传感器', async () => {
+  const called = [];
+  const mock = { currentLoad: async () => { called.push('cpu'); return { load: 1 }; }, mem: async () => ({}), fsSize: async () => ([]), graphics: async () => ({}) };
+  const extra = () => ({ 'cpu-temp': { name: 'cpu-temp', read: async () => { called.push('cpu-temp'); return { temp: 52 }; } } });
+  const sensors = createSensors({ si: mock, extraSensors: extra });
+  await sensors.snapshot(['cpu']);
+  assert.deepEqual(called, ['cpu']);
+});
+
+test('snapshot(keys) 插件传感器 read 抛错时该传感器降级为 undefined，不拖垮整个快照', async () => {
+  const mock = { currentLoad: async () => ({ currentLoad: 1 }), mem: async () => ({}), fsSize: async () => ([]), graphics: async () => ({}) };
+  const extra = () => ({ 'bad': { name: 'bad', read: async () => { throw new Error('boom'); } } });
+  const sensors = createSensors({ si: mock, extraSensors: extra });
+  const snap = await sensors.snapshot(['cpu', 'bad']);
+  assert.equal(snap.cpu.load, 1);
+  assert.equal(snap.bad, undefined);
+});
