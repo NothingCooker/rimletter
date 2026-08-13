@@ -15,6 +15,7 @@ const SENSOR_METRICS = {
   disk: [{ k: 'freeGB',  label: '剩余空间 GB' }],
   gpu:  [{ k: 'temp',    label: '温度 °C' }, { k: 'load', label: '占用率 %' }]
 };
+let pluginSensorMetrics = {}; // { sensorName: [{k,label}] } 从最新传感器快照推断（内置之外的新键）
 const OPERATORS = ['>', '>=', '<', '<='];
 
 function switchTab(name) {
@@ -167,12 +168,24 @@ function renderRules() {
   document.getElementById('add-rule').addEventListener('click', () => openEditor(null));
 }
 
-function openEditor(id) {
+async function openEditor(id) {
   editingRuleId = id;
   const r = id ? config.rules.find(x => x.id === id) : defaultRule();
+  // 插件传感器指标从最新快照推断：内置之外的新传感器键，取数值标量键（数组如 cores 排除）
+  try {
+    const st = await window.rimletter.getState();
+    pluginSensorMetrics = {};
+    if (st && typeof st === 'object') {
+      for (const [name, data] of Object.entries(st)) {
+        if (SENSOR_METRICS[name] || !data || typeof data !== 'object' || Array.isArray(data)) continue;
+        pluginSensorMetrics[name] = Object.keys(data).filter(k => !Array.isArray(data[k])).map(k => ({ k, label: k }));
+      }
+    }
+  } catch (e) { pluginSensorMetrics = {}; }
+  const allMetrics = { ...SENSOR_METRICS, ...pluginSensorMetrics };
   const box = document.getElementById('rule-editor');
-  const sensorOpts = Object.keys(SENSOR_METRICS).map(s => '<option value="' + s + '"' + (r.sensor === s ? ' selected' : '') + '>' + sensorLabel(s) + '</option>').join('');
-  const metricOpts = (SENSOR_METRICS[r.sensor] || SENSOR_METRICS.cpu).map(m =>
+  const sensorOpts = Object.keys(allMetrics).map(s => '<option value="' + s + '"' + (r.sensor === s ? ' selected' : '') + '>' + sensorLabel(s) + '</option>').join('');
+  const metricOpts = (allMetrics[r.sensor] || allMetrics.cpu).map(m =>
     '<option value="' + m.k + '"' + (r.metric === m.k ? ' selected' : '') + '>' + m.label + '</option>').join('');
   const opOpts = OPERATORS.map(o => '<option' + (r.operator === o ? ' selected' : '') + '>' + o + '</option>').join('');
   const sevOpts = SEVERITIES.map(s => '<option value="' + s.key + '"' + (r.severity === s.key ? ' selected' : '') + '>' + s.label + '</option>').join('');
@@ -197,7 +210,7 @@ function openEditor(id) {
 
   document.getElementById('ed-sensor').addEventListener('change', e => {
     const s = e.target.value;
-    document.getElementById('ed-metric').innerHTML = (SENSOR_METRICS[s] || []).map(m =>
+    document.getElementById('ed-metric').innerHTML = ({ ...SENSOR_METRICS, ...pluginSensorMetrics }[s] || []).map(m =>
       '<option value="' + m.k + '">' + m.label + '</option>').join('');
     const hint = document.getElementById('ed-gpu-hint');
     if (hint) hint.style.display = (s === 'gpu') ? '' : 'none';
