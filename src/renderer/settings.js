@@ -20,7 +20,7 @@ const OPERATORS = ['>', '>=', '<', '<='];
 
 function switchTab(name) {
   document.querySelectorAll('.rw-tab').forEach(t => t.classList.toggle('on', t.dataset.tab === name));
-  ['general', 'rules', 'plugins', 'about'].forEach(n => document.getElementById('pane-' + n).classList.toggle('on', n === name));
+  ['general', 'rules', 'plugins', 'market', 'about'].forEach(n => document.getElementById('pane-' + n).classList.toggle('on', n === name));
 }
 window.switchTab = switchTab;
 
@@ -34,6 +34,7 @@ async function init() {
     renderGeneral();
     renderRules();
     renderPlugins();
+    renderMarketPane();
     renderAbout();
   } catch (e) {
     const pane = document.getElementById('pane-general');
@@ -287,13 +288,6 @@ async function renderPlugins() {
     '<button class="rw-btn" id="plug-docs">插件开发文档</button></div>' +
     '<div id="plug-docs-box" style="display:none;margin-bottom:10px"></div>' +
     '<div class="rw-sep"></div>' +
-    '<div style="font-size:13px;color:#fff;font-weight:600;margin:8px 0">插件市场</div>' +
-    '<div style="margin-bottom:8px">' +
-    '<button class="rw-btn" id="mkt-refresh">刷新市场</button> ' +
-    '<button class="rw-btn" id="mkt-update-all">更新全部</button></div>' +
-    '<div id="mkt-list" style="font-size:12px;color:#c8d0da">加载中…</div>' +
-    '<div style="margin:8px 0;font-size:11px;color:#7f8a96">⚠ 插件将获得本机完全执行权限，仅从官方仓库安装可信插件。</div>' +
-    '<div class="rw-sep"></div>' +
     '<div style="font-size:13px;color:#fff;font-weight:600;margin:8px 0">已安装插件</div>' +
     '<div id="plug-list" style="font-size:12px;color:#c8d0da">加载中…</div>';
 
@@ -308,7 +302,19 @@ async function renderPlugins() {
     box.innerHTML = docsHtml();
   });
 
-  // 市场刷新/更新全部按钮在 renderPlugins 里绑定（renderMarket 可能提前 return 导致漏绑）
+  renderLocalPlugins();
+}
+
+// 插件市场独立页签：刷新/更新全部 + 清单。按钮在此绑定（renderMarket 可能提前 return 导致漏绑）
+async function renderMarketPane() {
+  const el = document.getElementById('pane-market');
+  el.innerHTML =
+    '<div style="margin-bottom:8px">' +
+    '<button class="rw-btn" id="mkt-refresh">刷新市场</button> ' +
+    '<button class="rw-btn" id="mkt-update-all">更新全部</button></div>' +
+    '<div id="mkt-list" style="font-size:12px;color:#c8d0da">加载中…</div>' +
+    '<div style="margin:8px 0;font-size:11px;color:#7f8a96">⚠ 插件将获得本机完全执行权限，仅从官方仓库安装可信插件。</div>';
+
   document.getElementById('mkt-refresh').addEventListener('click', renderMarket);
   document.getElementById('mkt-update-all').addEventListener('click', async () => {
     const btn = document.getElementById('mkt-update-all');
@@ -316,12 +322,12 @@ async function renderPlugins() {
     try {
       const res = await window.rimletter.updateAllPlugins();
       if (res && res.error && !Array.isArray(res)) { alert('更新失败：' + res.error); }
+      renderMarketPane();
       renderPlugins();
     } catch (e) { alert('更新失败：' + (e.message || e)); btn.textContent = '更新全部'; }
   });
 
   renderMarket();
-  renderLocalPlugins();
 }
 
 async function renderLocalPlugins() {
@@ -399,6 +405,7 @@ async function renderMarket() {
     try {
       const res = await window.rimletter.installPlugin(b.dataset.mktInstall);
       if (res && res.ok === false) throw new Error(res.error || '安装失败');
+      renderMarket();
       renderPlugins();
     } catch (e) { b.textContent = '失败'; alert('安装失败：' + (e.message || e)); }
   }));
@@ -407,6 +414,7 @@ async function renderMarket() {
     try {
       const res = await window.rimletter.installPlugin(b.dataset.mktUpdate);
       if (res && res.ok === false) throw new Error(res.error || '更新失败');
+      renderMarket();
       renderPlugins();
     } catch (e) { b.textContent = '失败'; alert('更新失败：' + (e.message || e)); }
   }));
@@ -415,6 +423,7 @@ async function renderMarket() {
     try {
       const res = await window.rimletter.uninstallPlugin(b.dataset.mktUninstall);
       if (res && res.ok === false) throw new Error(res.error || '卸载失败');
+      renderMarket();
       renderPlugins();
     } catch (e) { alert('卸载失败：' + (e.message || e)); }
   }));
@@ -617,6 +626,7 @@ async function restoreDefaults() {
   renderGeneral();
   renderRules();
   renderPlugins();
+  renderMarketPane();
 }
 window.runTest = runTest;
 window.restoreDefaults = restoreDefaults;
