@@ -15,11 +15,11 @@ function setHovered(el, on) {
   }
 }
 
-// 光标位置：由主进程每 80ms 轮询 screen.getCursorScreenPoint() 并通过 IPC 发送，
+// 光标位置：由主进程每 50ms 轮询 screen.getCursorScreenPoint() 并通过 IPC 发送，
 // 替代原来的 forward:true 鼠标事件转发（forward 每秒产生 ~60 次 IPC，导致鼠标卡顿）。
-// 主进程发送的是窗口相对坐标，与渲染层 CSS 像素空间一致（Electron DIP = CSS px）。
+// 收到坐标后立即执行 checkHover，消除原来 200ms 轮询间隔的延迟。
 let lastX = 0, lastY = 0;
-window.rimletter.onCursorMove((pos) => { lastX = pos.x; lastY = pos.y; });
+window.rimletter.onCursorMove((pos) => { lastX = pos.x; lastY = pos.y; checkHover(); });
 
 // 自愈式悬停核对（悬停权威）：主进程不做跨进程几何比对——Windows 缩放/多屏下
 // getCursorScreenPoint 与 getBoundingClientRect 坐标空间可能不一致，曾导致守卫误判、
@@ -38,9 +38,9 @@ function checkHover() {
   }
 }
 // 性能优化：悬停检测按需启停——无信件时停止 interval，避免空窗口 elementFromPoint 开销
-// 轮询替代 forward 后 IPC 开销极低，可缩短到 200ms 提升悬停响应
+// checkHover 已在 onCursorMove 中即时调用，interval 仅作兜底（mouseleave 丢失时自愈）
 let hoverIntervalId = null;
-function startHoverCheck() { if (!hoverIntervalId) hoverIntervalId = setInterval(checkHover, 200); }
+function startHoverCheck() { if (!hoverIntervalId) hoverIntervalId = setInterval(checkHover, 500); }
 function stopHoverCheck() { if (hoverIntervalId) { clearInterval(hoverIntervalId); hoverIntervalId = null; } }
 
 // 图标尺寸由 config.appearance.iconSize 驱动

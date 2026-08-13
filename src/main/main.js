@@ -173,8 +173,9 @@ function ensureOverlayGuard() {
 }
 
 // 光标轮询：替代 forward:true 的事件转发。
-// 主进程每 80ms 读取 screen.getCursorScreenPoint()，换算为窗口相对坐标后发给渲染层。
-// IPC 流量从 ~60 次/秒降至 ~12 次/秒，且无 forward 的内部开销。
+// 主进程每 50ms 读取 screen.getCursorScreenPoint()，换算为窗口相对坐标后发给渲染层。
+// 渲染层收到后立即 checkHover，总延迟从原来 280ms 降至 ~50ms+IPC。
+// IPC 流量 ~20 次/秒，远低于 forward 的 ~60 次/秒。
 let cursorPollerId = null;
 function startCursorPoller() {
   if (cursorPollerId) return;
@@ -186,7 +187,7 @@ function startCursorPoller() {
       x: cursor.x - bounds.x,
       y: cursor.y - bounds.y
     });
-  }, 80);
+  }, 50);
 }
 function stopCursorPoller() {
   if (cursorPollerId) { clearInterval(cursorPollerId); cursorPollerId = null; }
