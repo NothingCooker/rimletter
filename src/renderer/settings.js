@@ -171,17 +171,11 @@ function renderRules() {
 async function openEditor(id) {
   editingRuleId = id;
   const r = id ? config.rules.find(x => x.id === id) : defaultRule();
-  // 插件传感器指标从最新快照推断：内置之外的新传感器键，取数值标量键（数组如 cores 排除）
-  try {
-    const st = await window.rimletter.getState();
-    pluginSensorMetrics = {};
-    if (st && typeof st === 'object') {
-      for (const [name, data] of Object.entries(st)) {
-        if (SENSOR_METRICS[name] || !data || typeof data !== 'object' || Array.isArray(data)) continue;
-        pluginSensorMetrics[name] = Object.keys(data).filter(k => !Array.isArray(data[k])).map(k => ({ k, label: k }));
-      }
-    }
-  } catch (e) { pluginSensorMetrics = {}; }
+  renderRuleEditor(r);          // 同步渲染（用当前缓存的插件传感器指标，首次为空则只含内置），不阻塞
+  refreshPluginSensorMetrics(); // 后台刷新插件传感器指标，完成后原地更新下拉、保留当前选中
+}
+
+function renderRuleEditor(r) {
   const allMetrics = { ...SENSOR_METRICS, ...pluginSensorMetrics };
   const box = document.getElementById('rule-editor');
   const sensorOpts = Object.keys(allMetrics).map(s => '<option value="' + s + '"' + (r.sensor === s ? ' selected' : '') + '>' + sensorLabel(s) + '</option>').join('');
@@ -191,7 +185,7 @@ async function openEditor(id) {
   const sevOpts = SEVERITIES.map(s => '<option value="' + s.key + '"' + (r.severity === s.key ? ' selected' : '') + '>' + s.label + '</option>').join('');
   box.style.display = 'block';
   box.innerHTML =
-    '<div style="font-size:12px;color:#e8ecf1;font-weight:600;margin-bottom:6px">✏ ' + (id ? '编辑规则' : '添加规则') + '</div>' +
+    '<div style="font-size:12px;color:#e8ecf1;font-weight:600;margin-bottom:6px">✏ ' + (editingRuleId ? '编辑规则' : '添加规则') + '</div>' +
     '<div class="rw-row"><span class="rw-lbl">传感器</span><select class="rw-select" id="ed-sensor">' + sensorOpts + '</select>' +
       '<span class="rw-lbl">指标</span><select class="rw-select" id="ed-metric">' + metricOpts + '</select>' +
       '<span class="rw-lbl">比较</span><select class="rw-select" id="ed-op">' + opOpts + '</select>' +
@@ -234,6 +228,33 @@ async function openEditor(id) {
     renderRules();
   });
   document.getElementById('ed-cancel').addEventListener('click', () => renderRules());
+}
+
+async function refreshPluginSensorMetrics() {
+  let next = {};
+  try {
+    const st = await window.rimletter.getState();
+    if (st && typeof st === 'object') {
+      for (const [name, data] of Object.entries(st)) {
+        if (SENSOR_METRICS[name] || !data || typeof data !== 'object' || Array.isArray(data)) continue;
+        next[name] = Object.keys(data).filter(k => !Array.isArray(data[k])).map(k => ({ k, label: k }));
+      }
+    }
+  } catch (e) { next = {}; }
+  if (JSON.stringify(next) === JSON.stringify(pluginSensorMetrics)) return;
+  pluginSensorMetrics = next;
+  // 编辑器仍开着时原地更新下拉，保留当前选中
+  const sensorEl = document.getElementById('ed-sensor');
+  if (!sensorEl) return;
+  const curSensor = sensorEl.value;
+  const allMetrics = { ...SENSOR_METRICS, ...pluginSensorMetrics };
+  sensorEl.innerHTML = Object.keys(allMetrics).map(s => '<option value="' + s + '"' + (s === curSensor ? ' selected' : '') + '>' + sensorLabel(s) + '</option>').join('');
+  const metricEl = document.getElementById('ed-metric');
+  if (metricEl) {
+    const curMetric = metricEl.value;
+    metricEl.innerHTML = (allMetrics[curSensor] || []).map(m =>
+      '<option value="' + m.k + '"' + (m.k === curMetric ? ' selected' : '') + '>' + m.label + '</option>').join('');
+  }
 }
 
 function defaultRule() {
