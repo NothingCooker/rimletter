@@ -47,12 +47,8 @@ function getSensors() {
   const si = require('systeminformation');
   // execFile（异步）让 GPU 读取走非阻塞路径，避免 systeminformation.graphics()
   // 内部 execSync 同步阻塞主进程（实测 ~0.5s/次、每 2s 一次 → 鼠标卡顿）
-  const base = createSensors({ si, execFile: execFileAsync });
-  const merged = { ...base };
-  for (const [name, s] of Object.entries(registry.sensors)) {
-    merged[name] = { name, read: s.read };
-  }
-  return merged;
+  // extraSensors 让 snapshot 派发内置 + 插件传感器（v0.3.1 修复插件传感器不被轮询）
+  return createSensors({ si, execFile: execFileAsync, extraSensors: () => registry.sensors });
 }
 
 function triggerLetter({ severity, title, description, sound }) {
