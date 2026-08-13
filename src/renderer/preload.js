@@ -26,5 +26,9 @@ contextBridge.exposeInMainWorld('rimletter', {
   getUpdateState: () => ipcRenderer.invoke('update:state'),
   checkForUpdate: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
+  listMarket: () => ipcRenderer.invoke('market:list'),
+  installPlugin: (id) => ipcRenderer.invoke('market:install', id),
+  uninstallPlugin: (id) => ipcRenderer.invoke('market:uninstall', id),
+  updateAllPlugins: () => ipcRenderer.invoke('market:updateAll'),
   onUpdateStatus: (cb) => ipcRenderer.on('update:status', (_e, st) => cb(st))
 });

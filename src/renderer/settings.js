@@ -252,6 +252,15 @@ async function renderPlugins() {
     '<button class="rw-btn" id="plug-dir">打开插件目录</button> ' +
     '<button class="rw-btn" id="plug-docs">插件开发文档</button></div>' +
     '<div id="plug-docs-box" style="display:none;margin-bottom:10px"></div>' +
+    '<div class="rw-sep"></div>' +
+    '<div style="font-size:13px;color:#fff;font-weight:600;margin:8px 0">插件市场</div>' +
+    '<div style="margin-bottom:8px">' +
+    '<button class="rw-btn" id="mkt-refresh">刷新市场</button> ' +
+    '<button class="rw-btn" id="mkt-update-all">更新全部</button></div>' +
+    '<div id="mkt-list" style="font-size:12px;color:#c8d0da">加载中…</div>' +
+    '<div style="margin:8px 0;font-size:11px;color:#7f8a96">⚠ 插件将获得本机完全执行权限，仅从官方仓库安装可信插件。</div>' +
+    '<div class="rw-sep"></div>' +
+    '<div style="font-size:13px;color:#fff;font-weight:600;margin:8px 0">已安装插件</div>' +
     '<div id="plug-list" style="font-size:12px;color:#c8d0da">加载中…</div>';
 
   document.getElementById('plug-reload').addEventListener('click', async () => {
@@ -265,6 +274,23 @@ async function renderPlugins() {
     box.innerHTML = docsHtml();
   });
 
+  // 市场刷新/更新全部按钮在 renderPlugins 里绑定（renderMarket 可能提前 return 导致漏绑）
+  document.getElementById('mkt-refresh').addEventListener('click', renderMarket);
+  document.getElementById('mkt-update-all').addEventListener('click', async () => {
+    const btn = document.getElementById('mkt-update-all');
+    btn.textContent = '更新中…';
+    try {
+      const res = await window.rimletter.updateAllPlugins();
+      if (res && res.error && !Array.isArray(res)) { alert('更新失败：' + res.error); }
+      renderPlugins();
+    } catch (e) { alert('更新失败：' + (e.message || e)); btn.textContent = '更新全部'; }
+  });
+
+  renderMarket();
+  renderLocalPlugins();
+}
+
+async function renderLocalPlugins() {
   const plugs = await window.rimletter.listPlugins();
   const list = document.getElementById('plug-list');
   if (!plugs.length) {
@@ -301,6 +327,62 @@ async function renderPlugins() {
     document.getElementById('plug-preview').style.display = 'none';
     const p = plugs.find(x => x.name === b.dataset.config);
     if (p) renderPluginConfigForm(p);
+  }));
+}
+
+async function renderMarket() {
+  const box = document.getElementById('mkt-list');
+  let data;
+  try {
+    data = await window.rimletter.listMarket();
+  } catch (e) {
+    box.innerHTML = '<span style="color:#ff8888">市场加载失败：' + esc(e.message || e) + '</span>';
+    return;
+  }
+  if (!data || !Array.isArray(data)) {
+    box.innerHTML = '<span style="color:#ff8888">' + esc((data && data.error) || '市场不可用') + '</span>';
+    return;
+  }
+  if (!data.length) {
+    box.innerHTML = '<span style="color:#7f8a96">官方仓库暂无插件。</span>';
+    return;
+  }
+  box.innerHTML = '<table class="rw-rule">' +
+    '<tr><th>插件</th><th>说明</th><th>状态</th><th style="width:180px">操作</th></tr>' +
+    data.map(p =>
+      '<tr><td><b>' + esc(p.name) + '</b></td>' +
+      '<td>' + esc(p.desc) + '</td>' +
+      '<td>' + (p.installed ? '<span style="color:#8fce8f">已安装</span>' : '<span style="color:#7f8a96">未安装</span>') + '</td>' +
+      '<td>' +
+        (p.installed
+          ? '<button class="rw-btn small" data-mkt-update="' + esc(p.id) + '">更新</button> ' +
+            '<button class="rw-btn small" data-mkt-uninstall="' + esc(p.id) + '">卸载</button>'
+          : '<button class="rw-btn small" data-mkt-install="' + esc(p.id) + '">安装</button>') +
+      '</td></tr>').join('') + '</table>';
+
+  box.querySelectorAll('[data-mkt-install]').forEach(b => b.addEventListener('click', async () => {
+    b.textContent = '…';
+    try {
+      const res = await window.rimletter.installPlugin(b.dataset.mktInstall);
+      if (res && res.ok === false) throw new Error(res.error || '安装失败');
+      renderPlugins();
+    } catch (e) { b.textContent = '失败'; alert('安装失败：' + (e.message || e)); }
+  }));
+  box.querySelectorAll('[data-mkt-update]').forEach(b => b.addEventListener('click', async () => {
+    b.textContent = '…';
+    try {
+      const res = await window.rimletter.installPlugin(b.dataset.mktUpdate);
+      if (res && res.ok === false) throw new Error(res.error || '更新失败');
+      renderPlugins();
+    } catch (e) { b.textContent = '失败'; alert('更新失败：' + (e.message || e)); }
+  }));
+  box.querySelectorAll('[data-mkt-uninstall]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('卸载插件「' + b.dataset.mktUninstall + '」？将删除其 .js 文件。')) return;
+    try {
+      const res = await window.rimletter.uninstallPlugin(b.dataset.mktUninstall);
+      if (res && res.ok === false) throw new Error(res.error || '卸载失败');
+      renderPlugins();
+    } catch (e) { alert('卸载失败：' + (e.message || e)); }
   }));
 }
 
