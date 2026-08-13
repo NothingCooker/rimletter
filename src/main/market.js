@@ -46,7 +46,7 @@ function parseManifest(text) {
   });
 }
 
-function createMarket({ getConfig, setConfig = () => {}, configDir, fetch, onChanged = () => {} }) {
+function createMarket({ getConfig, setConfig = () => {}, configDir, fetch, now = () => Date.now(), onChanged = () => {} }) {
   const pluginsDir = () => path.join(configDir, 'plugins');
   const repo = () => (getConfig().market && getConfig().market.repo) || DEFAULT_REPO;
   const branch = () => (getConfig().market && getConfig().market.branch) || DEFAULT_BRANCH;
@@ -54,9 +54,11 @@ function createMarket({ getConfig, setConfig = () => {}, configDir, fetch, onCha
   // 依次尝试通道，全部失败抛错
   async function fetchText(filePath) {
     let lastErr = null;
+    const cb = String(now()); // 每次拉取携带唯一 cb，强制 jsdelivr 回源，避免读到旧缓存
     for (const ch of buildChannelUrls(repo(), branch(), filePath)) {
       try {
-        const res = await fetch(ch.url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+        const url = ch.name === 'jsdelivr' ? ch.url + '?cb=' + encodeURIComponent(cb) : ch.url;
+        const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return { channel: ch.name, text: await res.text() };
       } catch (err) {

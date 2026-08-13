@@ -69,7 +69,7 @@ test('parseManifest 条目 file 非字符串抛错', () => {
 
 // ===== createMarket =====
 
-function makeMarket({ repo = 'o/plugins', branch = 'main', fetchImpl, pluginsDir }) {
+function makeMarket({ repo = 'o/plugins', branch = 'main', fetchImpl, pluginsDir, now }) {
   const state = { market: { repo, branch }, plugins: { disabled: ['old'] } };
   const saved = [];
   let changed = 0;
@@ -78,15 +78,16 @@ function makeMarket({ repo = 'o/plugins', branch = 'main', fetchImpl, pluginsDir
     setConfig: (cfg) => saved.push(cfg),
     configDir: path.dirname(pluginsDir),
     fetch: fetchImpl,
+    now,
     onChanged: () => { changed++; }
   });
   return { market, changed: () => changed, saved: () => saved };
 }
 
-// 按 URL 精确路由的 fetch mock：route[url] = {ok, text} 或 {error}
+// 按路径路由的 fetch mock：route[path] = {ok, text} 或 {error}，忽略 query（cb 破缓存后缀）
 function routeFetch(route) {
   return async (url) => {
-    const r = route[url];
+    const r = route[url.split('?')[0]];
     if (!r) throw new Error('fetch not stubbed: ' + url);
     if (r.error) throw r.error;
     return { ok: r.ok !== false, status: r.status || 200, text: async () => r.text };
@@ -109,6 +110,22 @@ test('list 经 jsdelivr 拉取清单并标已安装', async () => {
   assert.equal(list[0].id, 'weather');
   assert.equal(list[0].installed, true);
   assert.equal(list[0].channel, 'jsdelivr');
+});
+
+test('每次 list 都携带唯一 cb 强制刷新 jsdelivr 缓存', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const seen = [];
+  const fetchImpl = async (url) => { seen.push(url); return { ok: true, status: 200, text: async () => MANIFEST }; };
+  const { market } = makeMarket({ fetchImpl, pluginsDir, now: () => String(seen.length) });
+  await market.list();
+  await market.list();
+  assert.equal(seen.length, 2);
+  assert.ok(seen[0].startsWith(urls[0].url), '首次走 jsdelivr 通道');
+  assert.ok(seen[0].includes('?cb='), 'jsdelivr 请求携带 cb 破缓存');
+  assert.notEqual(seen[0], seen[1], '两次刷新 cb 不同');
 });
 
 test('list 的 jsdelivr 失败时回退 raw', async () => {
