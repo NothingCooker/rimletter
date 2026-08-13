@@ -36,7 +36,10 @@ function checkHover() {
     setHovered(hoveredEl, false); // mouseleave 被丢弃时的兜底
   }
 }
-setInterval(checkHover, 250);
+// 性能优化：悬停检测按需启停——无信件时停止 interval，避免空窗口 elementFromPoint 开销
+let hoverIntervalId = null;
+function startHoverCheck() { if (!hoverIntervalId) hoverIntervalId = setInterval(checkHover, 250); }
+function stopHoverCheck() { if (hoverIntervalId) { clearInterval(hoverIntervalId); hoverIntervalId = null; } }
 
 // 图标尺寸由 config.appearance.iconSize 驱动
 const STYLE = document.createElement('style');
@@ -55,6 +58,7 @@ function playSound(name) {
 }
 
 function spawnLetter(L) {
+  startHoverCheck();
   const el = document.createElement('div');
   el.className = 'letter' + (L.bounce ? ' bounce' : '');
   el.innerHTML =
@@ -144,6 +148,12 @@ function dismiss(el, intervalId) {
   document.body.appendChild(ghost);
   el.remove();
   setTimeout(() => ghost.remove(), 520);
+
+  // 性能优化：信件全部消失后停止悬停检测并通知主进程隐藏窗口
+  if (stack.children.length === 0) {
+    stopHoverCheck();
+    window.rimletter.notifyEmpty();
+  }
 
   // Invert：把其余信固定回旧位置（视觉不动）
   siblings.forEach(l => {

@@ -55,6 +55,10 @@ function getSensors() {
 
 function triggerLetter({ severity, title, description, sound }) {
   const letter = formatLetter(severity, title, description, { sound: sound || undefined });
+  // 性能优化：无信件时窗口隐藏，有信件时才显示，避免全屏透明窗口持续合成 + forward 鼠标事件流量
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+    mainWindow.show();
+  }
   send('letter:new', letter);
 }
 
@@ -175,6 +179,7 @@ function createWindow() {
     skipTaskbar: true,
     resizable: false,
     hasShadow: false,
+    show: false,
     backgroundColor: '#00000000',
     webPreferences: { preload: path.join(__dirname, '..', 'renderer', 'preload.js'), contextIsolation: true }
   });
@@ -342,6 +347,13 @@ ipcMain.handle('plugins:dir', () => {
 ipcMain.handle('state:get', async () => { try { return await getSensors().snapshot(); } catch { return {}; } });
 ipcMain.handle('settings:close', () => { if (settingsWin) settingsWin.close(); });
 ipcMain.on('overlay:mouseover', (e, over) => ensureOverlayGuard().onHover(over));
+// 性能优化：所有信件消失后隐藏覆盖层窗口，消除空窗口的合成开销与 forward 鼠标事件流量
+ipcMain.on('overlay:empty', () => {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    mainWindow.hide();
+    if (overlayGuard) overlayGuard.stop();
+  }
+});
 ipcMain.handle('update:state', () => updater ? updater.getState() : { code: 'idle' });
 ipcMain.handle('update:check', () => updater ? updater.checkNow() : null);
 ipcMain.handle('update:install', () => { if (updater) updater.quitAndInstall(); return true; });
