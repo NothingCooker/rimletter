@@ -46,7 +46,7 @@ function parseManifest(text) {
   });
 }
 
-function createMarket({ getConfig, configDir, fetch, onChanged = () => {} }) {
+function createMarket({ getConfig, setConfig = () => {}, configDir, fetch, onChanged = () => {} }) {
   const pluginsDir = () => path.join(configDir, 'plugins');
   const repo = () => (getConfig().market && getConfig().market.repo) || DEFAULT_REPO;
   const branch = () => (getConfig().market && getConfig().market.branch) || DEFAULT_BRANCH;
@@ -97,15 +97,20 @@ function createMarket({ getConfig, configDir, fetch, onChanged = () => {} }) {
     }
   }
 
+  // 安装已解析的清单条目（manifest 已拉取，不再重复下载清单）
+  async function installEntry(entry) {
+    await downloadToFile(entry.id, entry.file);
+    enablePlugin(entry.id);
+    setConfig(getConfig());
+    onChanged();
+  }
+
   async function install(id) {
     if (!isSafeId(id)) throw new Error('非法插件 id: ' + id);
     const plugins = await list();
     const entry = plugins.find(p => p.id === id);
     if (!entry) throw new Error('市场不存在插件: ' + id);
-    await downloadToFile(id, entry.file);
-    enablePlugin(id);
-    onChanged();
-    return { ok: true };
+    return installEntry(entry).then(() => ({ ok: true }));
   }
 
   async function uninstall(id) {
@@ -121,7 +126,7 @@ function createMarket({ getConfig, configDir, fetch, onChanged = () => {} }) {
     const results = [];
     for (const p of plugins) {
       if (!p.installed) continue;
-      try { await install(p.id); results.push({ id: p.id, ok: true }); }
+      try { await installEntry(p); results.push({ id: p.id, ok: true }); }
       catch (e) { results.push({ id: p.id, ok: false, error: String(e.message || e) }); }
     }
     return results;

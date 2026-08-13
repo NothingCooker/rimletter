@@ -70,15 +70,17 @@ test('parseManifest 条目 file 非字符串抛错', () => {
 // ===== createMarket =====
 
 function makeMarket({ repo = 'o/plugins', branch = 'main', fetchImpl, pluginsDir }) {
-  const getConfig = () => ({ market: { repo, branch }, plugins: { disabled: ['old'] } });
+  const state = { market: { repo, branch }, plugins: { disabled: ['old'] } };
+  const saved = [];
   let changed = 0;
   const market = createMarket({
-    getConfig,
+    getConfig: () => state,
+    setConfig: (cfg) => saved.push(cfg),
     configDir: path.dirname(pluginsDir),
     fetch: fetchImpl,
     onChanged: () => { changed++; }
   });
-  return { market, changed: () => changed };
+  return { market, changed: () => changed, saved: () => saved };
 }
 
 // 按 URL 精确路由的 fetch mock：route[url] = {ok, text} 或 {error}
@@ -199,4 +201,42 @@ test('install 下载失败时无残留临时文件', async () => {
   const { market } = makeMarket({ fetchImpl, pluginsDir });
   await assert.rejects(() => market.install('weather'), /下载失败/);
   assert.ok(!fs.existsSync(path.join(pluginsDir, '.tmp-weather.js')));
+});
+
+test('install 会通过 setConfig 持久化启用状态', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fileUrls = buildChannelUrls('o/plugins', 'main', 'plugin-weather/plugin-weather.js');
+  const fetchImpl = routeFetch({
+    [urls[0].url]: { text: MANIFEST },
+    [fileUrls[0].url]: { text: 'x' }
+  });
+  const { market, saved } = makeMarket({ fetchImpl, pluginsDir });
+  await market.install('weather');
+  assert.ok(saved().length >= 1, 'setConfig 被调用');
+  const persisted = saved()[saved().length - 1];
+  assert.ok(!persisted.plugins.disabled.includes('weather'), 'weather 从 disabled 移除');
+  assert.ok(persisted.plugins.disabled.includes('old'), '其它禁用项保留');
+});
+
+test('updateAll 单项失败不中断且记录 error', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginsDir, 'weather.js'), 'old');
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fileUrls = buildChannelUrls('o/plugins', 'main', 'plugin-weather/plugin-weather.js');
+  const fetchImpl = routeFetch({
+    [urls[0].url]: { text: MANIFEST },
+    [urls[1].url]: { text: MANIFEST },
+    [fileUrls[0].url]: { error: new Error('down') },
+    [fileUrls[1].url]: { error: new Error('down') }
+  });
+  const { market } = makeMarket({ fetchImpl, pluginsDir });
+  const results = await market.updateAll();
+  assert.equal(results.length, 1);
+  assert.equal(results[0].ok, false);
+  assert.ok(results[0].error.includes('down'));
 });
