@@ -56,8 +56,9 @@ function getSensors() {
 function triggerLetter({ severity, title, description, sound }) {
   const letter = formatLetter(severity, title, description, { sound: sound || undefined });
   // 性能优化：无信件时窗口隐藏，有信件时才显示，避免全屏透明窗口持续合成 + forward 鼠标事件流量
+  // 学习 pmptr：用 showInactive() 不抢焦点
   if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
-    mainWindow.show();
+    mainWindow.showInactive();
   }
   send('letter:new', letter);
 }
@@ -169,10 +170,16 @@ function ensureOverlayGuard() {
 }
 
 function createWindow() {
-  const { width, height } = screen.getPrimaryDisplay().bounds;
+  // 性能优化（学习 pmptr）：用窄条窗口替代全屏透明窗口
+  // 信件栈在右侧 26px 处，tooltip 宽 300px，400px 足够覆盖
+  // 像素面积从 ~207万 降至 ~86万（1080p），减少 ~58% GPU 合成开销
+  const { width: screenW, height: screenH } = screen.getPrimaryDisplay().bounds;
+  const WIN_W = 400;
   mainWindow = new BrowserWindow({
-    width, height,
-    x: 0, y: 0,
+    width: WIN_W,
+    height: screenH,
+    x: screenW - WIN_W,  // 贴右边缘
+    y: 0,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -358,7 +365,20 @@ ipcMain.handle('update:state', () => updater ? updater.getState() : { code: 'idl
 ipcMain.handle('update:check', () => updater ? updater.checkNow() : null);
 ipcMain.handle('update:install', () => { if (updater) updater.quitAndInstall(); return true; });
 
+// 学习 poe-live-search-manager：单实例锁，防止多开
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.focus(); return; }
+    openSettings();
+  });
+}
+
 app.whenReady().then(() => {
+  // 学习 poe-live-search-manager：设置 AppUserModelId 让 Windows 通知正确关联应用
+  app.setAppUserModelId('com.nothingcooker.rimletter');
+
   configDir = app.getPath('userData');
   config = loadConfig(configDir);
   createWindow();

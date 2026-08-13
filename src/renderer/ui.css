@@ -28,11 +28,13 @@ html, body {
   pointer-events: auto;
   animation: fall .9s cubic-bezier(.2, .8, .3, 1.15) forwards;
   opacity: 0;
+  will-change: transform, opacity;  /* 学习 pmptr：提示 GPU 预创建合成层 */
 }
 /* 图标+文字共用一个容器，弹跳/浮动时两者一起动（游戏原版：文字基于图标位置计算） */
 .letter-inner {
   position: relative;
   display: inline-block;
+  will-change: transform;  /* 学习 pmptr：bounce 动画用 translate3d 合成层 */
 }
 .letter .icon {
   width: 64px;
@@ -85,8 +87,8 @@ html, body {
   animation: fb .9s ease-in-out 15s infinite;
 }
 @keyframes fb {
-  0%, 100% { transform: translateX(0); }
-  50%      { transform: translateX(-14px); }
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(-14px, 0, 0); }
 }
 
 /* 全屏径向闪光 */
