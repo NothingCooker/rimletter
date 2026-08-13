@@ -3,12 +3,20 @@ const assert = require('node:assert');
 const { EventEmitter } = require('node:events');
 const { createUpdater } = require('../src/main/updater');
 
-function mockAutoUpdater() {
+function mockAutoUpdater({ failFirst = 0 } = {}) {
   const au = new EventEmitter();
-  au.checkForUpdates = () => { au.checkCalled = true; return Promise.resolve({}); };
+  let calls = 0;
+  au.checkForUpdates = () => {
+    calls++;
+    au.checkCalled = true;
+    if (calls <= failFirst) return Promise.reject(new Error('网络不可用'));
+    return Promise.resolve({});
+  };
   au.quitAndInstall = () => { au.quitCalled = true; };
   au.autoDownload = false;
   au.autoInstallOnAppQuit = false;
+  au.setFeedURL = (opts) => { (au.feedHistory = au.feedHistory || []).push(opts); };
+  au.failFirst = failFirst;
   return au;
 }
 
@@ -92,4 +100,54 @@ test('未下载时 quitAndInstall 不调用，下载后调用', () => {
   au.emit('update-downloaded', { version: '0.2.3' });
   updater.quitAndInstall();
   assert.equal(au.quitCalled, true);
+});
+
+test('首通道失败自动换下一通道并成功', async () => {
+  const au = mockAutoUpdater({ failFirst: 1 });
+  const seen = [];
+  const updater = createUpdater({ autoUpdater: au, proxyChannels: ['https://p1', 'https://p2'], publishRepo: 'o/r', onStatus: s => seen.push(s) });
+  updater.init();
+  const p = updater.checkNow();
+  // 等一个宏任务，让通道回退的微任务链先走完（回退到 p2、进入 checking 态）
+  await new Promise(r => setTimeout(r, 0));
+  au.emit('update-not-available');
+  await p;
+  assert.deepEqual(au.feedHistory.map(f => f.provider), ['generic', 'generic']);
+  assert.deepEqual(au.feedHistory.map(f => f.url), [
+    'https://p1/https://github.com/o/r/releases/latest/download',
+    'https://p2/https://github.com/o/r/releases/latest/download'
+  ]);
+  assert.equal(seen[seen.length - 1].code, 'uptodate');
+});
+
+test('全部通道失败置 error，最后一个是原生 github', async () => {
+  const au = mockAutoUpdater({ failFirst: 3 });
+  const seen = [];
+  const updater = createUpdater({ autoUpdater: au, proxyChannels: ['https://p1', 'https://p2'], publishRepo: 'o/r', onStatus: s => seen.push(s) });
+  updater.init();
+  const p = updater.checkNow();
+  await p;
+  assert.deepEqual(au.feedHistory.map(f => f.provider), ['generic', 'generic', 'github']);
+  assert.equal(seen[seen.length - 1].code, 'error');
+  assert.ok(seen[seen.length - 1].error.includes('网络不可用'));
+});
+
+test('无 proxyChannels 时只走原生 github feed', async () => {
+  const au = mockAutoUpdater({ failFirst: 0 });
+  const updater = createUpdater({ autoUpdater: au, publishRepo: 'o/r' });
+  updater.init();
+  await updater.checkNow();
+  assert.deepEqual(au.feedHistory.map(f => f.provider), ['github']);
+});
+
+test('下载阶段错误不换通道', async () => {
+  const au = mockAutoUpdater({ failFirst: 0 });
+  const seen = [];
+  const updater = createUpdater({ autoUpdater: au, proxyChannels: ['https://p1'], publishRepo: 'o/r', onStatus: s => seen.push(s) });
+  updater.init();
+  await updater.checkNow(); // 检查成功
+  const historyLen = au.feedHistory.length;
+  au.emit('error', new Error('下载中断'));
+  assert.equal(au.feedHistory.length, historyLen, '错误事件不触发换通道');
+  assert.equal(seen[seen.length - 1].code, 'error');
 });
