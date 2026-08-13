@@ -15,10 +15,11 @@ function setHovered(el, on) {
   }
 }
 
-// 光标位置：window 级 mousemove 持续更新。forward 转发让窗口点击穿透时也能收到
-// 坐标，因此这里始终是「当前光标位置」（渲染层同一 CSS 像素空间，无跨进程换算）。
+// 光标位置：由主进程每 80ms 轮询 screen.getCursorScreenPoint() 并通过 IPC 发送，
+// 替代原来的 forward:true 鼠标事件转发（forward 每秒产生 ~60 次 IPC，导致鼠标卡顿）。
+// 主进程发送的是窗口相对坐标，与渲染层 CSS 像素空间一致（Electron DIP = CSS px）。
 let lastX = 0, lastY = 0;
-window.addEventListener('mousemove', (e) => { lastX = e.clientX; lastY = e.clientY; });
+window.rimletter.onCursorMove((pos) => { lastX = pos.x; lastY = pos.y; });
 
 // 自愈式悬停核对（悬停权威）：主进程不做跨进程几何比对——Windows 缩放/多屏下
 // getCursorScreenPoint 与 getBoundingClientRect 坐标空间可能不一致，曾导致守卫误判、
@@ -37,8 +38,9 @@ function checkHover() {
   }
 }
 // 性能优化：悬停检测按需启停——无信件时停止 interval，避免空窗口 elementFromPoint 开销
+// 轮询替代 forward 后 IPC 开销极低，可缩短到 200ms 提升悬停响应
 let hoverIntervalId = null;
-function startHoverCheck() { if (!hoverIntervalId) hoverIntervalId = setInterval(checkHover, 250); }
+function startHoverCheck() { if (!hoverIntervalId) hoverIntervalId = setInterval(checkHover, 200); }
 function stopHoverCheck() { if (hoverIntervalId) { clearInterval(hoverIntervalId); hoverIntervalId = null; } }
 
 // 图标尺寸由 config.appearance.iconSize 驱动
@@ -115,7 +117,8 @@ function spawnFlash(L, el, flashColor, peakAlpha, scale) {
   const rect = iconEl ? iconEl.getBoundingClientRect() : el.getBoundingClientRect();
   flash.style.left = (rect.left + rect.width / 2) + 'px';
   flash.style.top = (rect.top + rect.height / 2) + 'px';
-  const d = Math.max(window.innerWidth, window.innerHeight) * scale;
+  // 性能优化：闪光尺寸从全屏缩为图标区域的 4 倍，大幅减少 GPU 合成开销
+  const d = Math.max(rect.width, rect.height) * 4 * scale;
   flash.style.width = d + 'px';
   flash.style.height = d + 'px';
   document.body.appendChild(flash);

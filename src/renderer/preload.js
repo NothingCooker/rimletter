@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('rimletter', {
   onOpenSettings: (cb) => ipcRenderer.on('settings:open', () => cb()),
   onConfigChange: (cb) => ipcRenderer.on('config:changed', (_e, cfg) => cb(cfg)),
   setMouseOver: (over) => ipcRenderer.send('overlay:mouseover', over),
+  onCursorMove: (cb) => ipcRenderer.on('overlay:cursor', (_e, pos) => cb(pos)),
   notifyEmpty: () => ipcRenderer.send('overlay:empty'),
   onMouseLeaveForce: (cb) => ipcRenderer.on('overlay:mouse-leave-force', () => cb()),
   getUpdateState: () => ipcRenderer.invoke('update:state'),

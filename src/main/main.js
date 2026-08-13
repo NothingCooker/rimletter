@@ -5,7 +5,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const execFileAsync = promisify(execFile);
 const { loadConfig, saveConfig } = require('./config');
-const { createOverlayMouseGuard } = require('./overlayMouse');
+const { createOverlayMouseGuard } = require('./overlayMouse'); // 保留：仅用其状态机，不再 forward
 const { createSensors } = require('./sensors');
 const { createMonitor } = require('./monitor');
 const { formatLetter } = require('./letters');
@@ -157,16 +157,39 @@ function ensureOverlayGuard() {
     overlayGuard = createOverlayMouseGuard({
       setClickThrough: () => {
         if (!mainWindow) return;
-        mainWindow.setIgnoreMouseEvents(true, { forward: true });
+        // 不使用 forward:true —— forward 会把每次鼠标移动都通过 IPC 转发给渲染进程，
+        // 产生约 60 次/秒的 IPC 流量，导致鼠标移动卡顿。
+        // 改用主进程光标轮询（见 startCursorPoller）替代事件转发。
+        mainWindow.setIgnoreMouseEvents(true);
         // 同步渲染层复位悬停态，避免其内部 hovered 残留
         mainWindow.webContents.send('overlay:mouse-leave-force');
       },
-      setInteractive: () => { if (mainWindow) mainWindow.setIgnoreMouseEvents(false, { forward: true }); },
+      setInteractive: () => { if (mainWindow) mainWindow.setIgnoreMouseEvents(false); },
       timeoutMs: 3000,
       intervalMs: 1000
     });
   }
   return overlayGuard;
+}
+
+// 光标轮询：替代 forward:true 的事件转发。
+// 主进程每 80ms 读取 screen.getCursorScreenPoint()，换算为窗口相对坐标后发给渲染层。
+// IPC 流量从 ~60 次/秒降至 ~12 次/秒，且无 forward 的内部开销。
+let cursorPollerId = null;
+function startCursorPoller() {
+  if (cursorPollerId) return;
+  cursorPollerId = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
+    const cursor = screen.getCursorScreenPoint();
+    const bounds = mainWindow.getBounds();
+    mainWindow.webContents.send('overlay:cursor', {
+      x: cursor.x - bounds.x,
+      y: cursor.y - bounds.y
+    });
+  }, 80);
+}
+function stopCursorPoller() {
+  if (cursorPollerId) { clearInterval(cursorPollerId); cursorPollerId = null; }
 }
 
 function createWindow() {
@@ -190,15 +213,19 @@ function createWindow() {
     backgroundColor: '#00000000',
     webPreferences: { preload: path.join(__dirname, '..', 'renderer', 'preload.js'), contextIsolation: true }
   });
-  mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  mainWindow.setIgnoreMouseEvents(true); // 无 forward：用主进程光标轮询替代
   mainWindow.once('ready-to-show', () => {
     // 透明无边框窗口有时不立即应用鼠标穿透（Windows 已知问题），首帧后再断言一次
-    mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    mainWindow.setIgnoreMouseEvents(true);
   });
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'overlay.html'));
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  // 窗口显示时启动光标轮询，隐藏时停止——无信件时零开销
+  mainWindow.on('show', () => startCursorPoller());
+  mainWindow.on('hide', () => stopCursorPoller());
   mainWindow.on('closed', () => {
     mainWindow = null;
+    stopCursorPoller();
     if (overlayGuard) { overlayGuard.stop(); overlayGuard = null; }
   });
 }
