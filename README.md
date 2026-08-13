@@ -1,7 +1,7 @@
 # RimLetter 边缘信使
 
 一个参考《边缘世界》(RimWorld) 右侧 Letter 信件播报系统的桌面功能性摆件。当硬件占用过高（CPU / 内存 / 磁盘 / GPU）时，信从屏幕右缘坠落滑入提醒；平时完全隐身，告警才出现。全程使用游戏解包的原始 UI 素材与配色，并支持本地 HTTP API 和手写 JS 插件扩展。
-
+官方插件仓库：https://github.com/NothingCooker/rimletter-official-plugins
 ## 截图
 
 告警播报（右侧信堆栈，按紧急度染色 + 全屏径向闪光 + 威胁弹跳）：
