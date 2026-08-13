@@ -11,6 +11,7 @@ const { createMonitor } = require('./monitor');
 const { formatLetter } = require('./letters');
 const { createApiServer } = require('./api');
 const { loadPlugins, assertSchema, normalizeConfig, getPluginConfig } = require('./plugins');
+const { createMarket } = require('./market');
 const { createUpdater } = require('./updater');
 const { buildAutostartOptions } = require('./autostart');
 const { autoUpdater } = require('electron-updater');
@@ -25,6 +26,7 @@ let apiServer = null;
 let registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHandlers: {}, pluginActions: {} };
 let lastPluginResults = [];
 let updater = null;
+let market = null;
 let overlayGuard = null;      // 覆盖层鼠标穿透守卫（见 overlayMouse.js）
 
 const ASSETS = path.join(__dirname, '..', '..', 'assets');
@@ -132,6 +134,8 @@ function initUpdater() {
   updater = createUpdater({
     autoUpdater,
     isEnabled: () => !!(config.update && config.update.enabled),
+    proxyChannels: (config.update && config.update.proxyChannels) || [],
+    publishRepo: 'NothingCooker/rimletter',
     onStatus: (st) => sendToSettings('update:status', st),
     onDownloaded: () => triggerLetter({
       severity: 'NeutralEvent',
@@ -339,6 +343,10 @@ ipcMain.handle('plugins:dir', () => {
   shell.openPath(dir);
   return dir;
 });
+ipcMain.handle('market:list', () => market ? market.list() : { error: 'market 未初始化' });
+ipcMain.handle('market:install', (e, id) => market ? market.install(id) : { ok: false, error: 'market 未初始化' });
+ipcMain.handle('market:uninstall', (e, id) => market ? market.uninstall(id) : { ok: false, error: 'market 未初始化' });
+ipcMain.handle('market:updateAll', () => market ? market.updateAll() : { error: 'market 未初始化' });
 ipcMain.handle('state:get', async () => { try { return await getSensors().snapshot(); } catch { return {}; } });
 ipcMain.handle('settings:close', () => { if (settingsWin) settingsWin.close(); });
 ipcMain.on('overlay:mouseover', (e, over) => ensureOverlayGuard().onHover(over));
@@ -349,6 +357,13 @@ ipcMain.handle('update:install', () => { if (updater) updater.quitAndInstall(); 
 app.whenReady().then(() => {
   configDir = app.getPath('userData');
   config = loadConfig(configDir);
+  market = createMarket({
+    getConfig: () => config,              // 必须返回 live config 对象（非深拷贝），enablePlugin 会原地改它
+    setConfig: (cfg) => saveConfig(configDir, cfg),  // install 启用后立即持久化
+    configDir,
+    fetch: globalThis.fetch,
+    onChanged: () => { reloadEverything(); }        // 装/卸后重载插件
+  });
   createWindow();
   createTray();
   reloadEverything();
