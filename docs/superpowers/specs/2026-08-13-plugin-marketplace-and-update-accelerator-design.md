@@ -49,7 +49,7 @@ market: { repo: 'NothingCooker/rimletter-official-plugins', branch: 'main' }
 依赖注入风格（同 sensors 注入 `si`、updater 注入 `autoUpdater`），便于单测：
 
 ```js
-createMarket({ config, configDir, fetch, onChanged })
+createMarket({ getConfig, setConfig, configDir, fetch, onChanged })
 ```
 
 | 函数 | 说明 |
@@ -114,10 +114,11 @@ attemptCheck():
 顶部新增「插件市场」区块（置于现有本地插件表格之前）：
 
 - 按钮：刷新市场 / 更新全部
-- 列表行：名称 + 描述 + 状态（可安装 / 已安装 / 失败原因），行内按钮：安装 / 卸载 / 更新
+- 列表行：名称 + 描述 + 状态（已安装 / 未安装），行内按钮：安装 / 卸载 / 更新
 - 文案提示：「插件将获得本机完全执行权限，仅从官方仓库安装可信插件」
-- 状态色沿用现有约定（绿=已安装、红=错误、灰=未安装）
+- 状态色沿用现有约定（绿=已安装、灰=未安装）
 - 加载失败显示错误，不影响本地插件表格
+- 安装/更新/卸载失败经 alert 提示（兼容 reject 抛错与 `{ok:false}` 两种形态）；卸载前 confirm
 
 ## 5. 测试
 

@@ -713,10 +713,11 @@ let market = null;
 
 ```js
   market = createMarket({
-    getConfig: () => config,
+    getConfig: () => config,              // 必须返回 live config 对象（非深拷贝），enablePlugin 会原地改它
+    setConfig: (cfg) => saveConfig(configDir, cfg),  // install 启用后立即持久化
     configDir,
     fetch: globalThis.fetch,
-    onChanged: () => { saveConfig(configDir, config); reloadEverything(); }
+    onChanged: () => { reloadEverything(); }        // 装/卸后重载插件
   });
 ```
 
