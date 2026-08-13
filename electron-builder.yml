@@ -17,7 +17,8 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  # 稳定文件名（不带版本号）：README 的 releases/latest/download/ 下载链接依赖此名，发版时勿改
+  artifactName: ${productName}-Setup-${arch}.${ext}
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

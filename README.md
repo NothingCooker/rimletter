@@ -1,5 +1,12 @@
 # RimLetter 边缘信使
 
+**⬇️ 下载最新版（Windows x64 · NSIS 安装程序）**
+
+- [GitHub Release 下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-x64.exe)
+- [中国大陆加速下载](https://gh.ddlc.top/https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-x64.exe)
+
+> 加速链接走 gh.ddlc.top 公益镜像；若失效，把链接中域名 `gh.ddlc.top` 换成 `ghproxy.net` 即可。安装包内置自动更新，启动后静默检查新版。
+
 一个参考《边缘世界》(RimWorld) 右侧 Letter 信件播报系统的桌面功能性摆件。当硬件占用过高（CPU / 内存 / 磁盘 / GPU）时，信从屏幕右缘坠落滑入提醒；平时完全隐身，告警才出现。全程使用游戏解包的原始 UI 素材与配色，并支持本地 HTTP API 和手写 JS 插件扩展。
 官方插件仓库：https://github.com/NothingCooker/rimletter-official-plugins
 ## 截图
