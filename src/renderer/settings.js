@@ -80,6 +80,9 @@ function renderGeneral() {
     '<div class="rw-row"><span class="rw-lbl">自动更新</span>' +
       '<span class="rw-cb' + (config.update.enabled ? ' on' : '') + '" data-toggle="update.enabled"></span>' +
       '<span class="rw-gray">' + (config.update.enabled ? '开启' : '关闭') + '</span></div>' +
+    '<div class="rw-row"><span class="rw-lbl">更新前测速</span>' +
+      '<span class="rw-cb' + (config.update.speedTest ? ' on' : '') + '" data-toggle="update.speedTest"></span>' +
+      '<span class="rw-gray">' + (config.update.speedTest ? '开启' : '关闭') + '</span></div>' +
     '<div class="rw-row"><span class="rw-lbl">更新状态</span>' +
       '<span class="rw-gray" id="update-status">…</span>' +
       '<button class="rw-btn" id="update-check-btn">立即检查</button>' +
@@ -116,7 +119,8 @@ function renderGeneral() {
     if (!statusEl) return;
     const map = {
       idle: '未检查',
-      checking: '正在检查更新…',
+      speedtesting: '正在测速(通道 ' + (st.current || 0) + '/' + (st.total || 0) + ')…',
+      checking: st.channel ? '正在通过「' + st.channel + '」检查更新…' : '正在检查更新…',
       uptodate: '已是最新版本',
       'update-available': '发现新版本 v' + (st.version || '?') + '，正在下载…',
       downloading: '正在下载…',
