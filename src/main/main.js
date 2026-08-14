@@ -396,6 +396,7 @@ app.whenReady().then(() => {
     apiServer = createApiServer({
       token: config.api.token,
       cors: config.api.cors,
+      onError: (e) => { if (log) log.error('API 启动失败（host 非法或端口被占）', e && e.message || e); },
       onLetter: triggerLetter,
       getState: async () => { try { return await getSensors().snapshot(); } catch { return {}; } },
       getRules: getEffectiveRules,

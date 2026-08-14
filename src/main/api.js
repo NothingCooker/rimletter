@@ -1,7 +1,7 @@
 // src/main/api.js
 const http = require('node:http');
 
-function createApiServer({ token, onLetter, getState, getRules, addRule, updateRule, deleteRule, reload, cors = false }) {
+function createApiServer({ token, onLetter, getState, getRules, addRule, updateRule, deleteRule, reload, onError, cors = false }) {
   let server = null;
   let port = 0;
 
@@ -75,6 +75,11 @@ function createApiServer({ token, onLetter, getState, getRules, addRule, updateR
     start(p = 0, host = '127.0.0.1') {
       return new Promise(resolve => {
         server = http.createServer(handle);
+        // 绑定失败（host 非法 / 端口被占）：释放 server 并经 onError 上报，避免未捕获异常崩溃。
+        server.on('error', (err) => {
+          server = null;
+          if (onError) onError(err);
+        });
         server.listen(p, host, () => { port = server.address().port; resolve(); });
       });
     },
