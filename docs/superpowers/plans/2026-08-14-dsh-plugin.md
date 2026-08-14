@@ -639,6 +639,12 @@ module.exports._test = { summarize, normalizeEndpoint, mapFrame, isDoneTurnEnd, 
 
 **Key point:** `module.exports` is now the async plugin function (RimLetter's loader calls `require(file)` and expects a function or `{ load }`). The `_test` property is attached to that function object, so `require('../plugin-dsh.js')._test` still works in tests.
 
+> **Post-review corrections (already applied to the committed code):**
+> 1. **Transport is WebSocket, not SSE** — live npm dsh returns 426 for SSE GET; `runStream` uses `global.WebSocket` (injectable `WS`), base URL `ws://`. (See the design doc §2.)
+> 2. **Backoff reset works** — `onclose` resolves `null` when the socket had opened (`opened` flag), so `attempt=0` reset is reachable; reconnect delays injectable (`reconnectMs`/`maxReconnectMs`).
+> 3. **`onmessage` fully try/catch-wrapped** (incl. `await data.text()`); `finish` no longer re-closes the already-closed socket.
+> 4. **Test teardown** uses a `close()` helper that `sockRef.destroy()`s the upgraded socket — `server.closeAllConnections()` does NOT close upgraded WS sockets (hangs `server.close()`). A reconnect test exercises the drop→reconnect path.
+
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `node --test test/dsh.test.js`
