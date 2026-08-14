@@ -37,6 +37,11 @@ test('parsePath 无 path 返回 null', () => {
   assert.equal(parsePath('version: 0.3.4\n'), null);
 });
 
+test('parsePath fallback 跳过 blockmap 选安装包', () => {
+  const yml = 'version: 0.3.4\nfiles:\n  - url: App-Setup-x64.exe.blockmap\n    sha512: x\n  - url: App-Setup-x64.exe\n    sha512: y\n';
+  assert.equal(parsePath(yml), 'App-Setup-x64.exe');
+});
+
 test('fetchManifest 解析成功清单', async () => {
   const fetch = async () => ({ ok: true, status: 200, text: async () => 'path: App.exe\n' });
   const r = await fetchManifest(fetch, 'u', 1000);

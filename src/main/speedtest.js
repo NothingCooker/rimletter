@@ -37,7 +37,7 @@ function parsePath(ymlText) {
   }
   for (const line of lines) {
     const m = /^\s*-\s*url:\s*(\S+)\s*$/.exec(line);
-    if (m) return m[1];
+    if (m && !m[1].endsWith('.blockmap')) return m[1];
   }
   return null;
 }
