@@ -6,7 +6,8 @@ function createApiServer({ token, onLetter, getState, getRules, addRule, updateR
   let port = 0;
 
   // CORS 默认关闭；仅当 config.api.cors=true（如本机手动发信网页）时开放浏览器跨域调用。
-  // 服务仅绑定 127.0.0.1 + token 鉴权，风险可控；发行版默认不开启，体验与安全面同关闭时一致。
+  // 服务默认绑定 127.0.0.1 + token 鉴权；若 api.host 改为 0.0.0.0（局域网推送场景），
+  // 局域网内其它设备可带 token 访问管理 API（token 明文 HTTP），需自行评估风险。
   const CORS_HEADERS = cors ? {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',

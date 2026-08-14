@@ -405,8 +405,8 @@ app.whenReady().then(() => {
       reload: () => { reloadEverything(); return { ok: true }; }
     });
     apiServer.start(config.api.port, config.api.host);
-    if (log) log.info('API 已启动', 'http://127.0.0.1:' + config.api.port);
-    else console.log('API 已启动 http://127.0.0.1:' + config.api.port + '  token=' + config.api.token);
+    if (log) log.info('API 已启动', 'http://' + config.api.host + ':' + config.api.port);
+    else console.log('API 已启动 http://' + config.api.host + ':' + config.api.port + '  token=' + config.api.token);
   }
 });
 

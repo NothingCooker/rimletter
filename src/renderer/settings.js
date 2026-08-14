@@ -76,6 +76,9 @@ function renderGeneral() {
       '<select class="rw-select" id="log-level">' + ['debug', 'info', 'warn', 'error'].map(l =>
         '<option' + (curLogLevel === l ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
       '<span class="rw-gray">写入 userData/logs/rimletter.log，重启生效</span></div>' +
+    '<div class="rw-row"><span class="rw-lbl">API 绑定地址</span>' +
+      '<input class="rw-input" id="api-host" value="' + esc((config.api && config.api.host) || '127.0.0.1') + '" style="width:110px">' +
+      '<span class="rw-gray">局域网推送时改 0.0.0.0，重启生效</span></div>' +
     '<div class="rw-sep"></div>' +
     '<div class="rw-row"><span class="rw-lbl">自动更新</span>' +
       '<span class="rw-cb' + (config.update.enabled ? ' on' : '') + '" data-toggle="update.enabled"></span>' +
@@ -102,6 +105,16 @@ function renderGeneral() {
   if (logLevelEl) logLevelEl.addEventListener('change', () => {
     config.log = config.log || {};
     config.log.level = logLevelEl.value;
+    persistConfig();
+  });
+
+  // API 绑定地址（重启生效；只接受主机名/IP 形态，非法输入回退原值）
+  const apiHostEl = document.getElementById('api-host');
+  if (apiHostEl) apiHostEl.addEventListener('change', () => {
+    const v = (apiHostEl.value || '').trim();
+    if (!v || !/^[A-Za-z0-9._:-]+$/.test(v)) { apiHostEl.value = (config.api && config.api.host) || '127.0.0.1'; return; }
+    config.api = config.api || {};
+    config.api.host = v;
     persistConfig();
   });
 
