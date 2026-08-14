@@ -29,9 +29,9 @@
 | 函数 | 职责 |
 |---|---|
 | `buildChannelProbeUrls({ proxyChannels, publishRepo, arch })` | 为每个通道构造探测 URL：清单文件 + 安装包探测地址。清单文件名：`arch === 'arm64' ? 'latest-arm64.yml' : 'latest.yml'`（与 electron-updater 行为一致） |
-| `fetchManifest(fetch, url, timeoutMs)` | 下载清单，解析出安装包相对路径 `path`（正则提取顶层 `path:` 行，fallback 到 `files` 段的 `- url:`）。返回 `{ ok, path, size }` 或 `{ ok: false, error }` |
+| `fetchManifest(fetch, url, timeoutMs)` | 下载清单，解析出安装包相对路径 `path`（正则提取顶层 `path:` 行，fallback 到 `files` 段的 `- url:`）。返回 `{ ok, path }` 或 `{ ok: false, error }` |
 | `measureThroughput(fetch, url, { chunkBytes, timeoutMs })` | 对安装包 URL 发 `Range: bytes=0-(chunkBytes-1)` 请求，读响应流计时，返回 `{ ok, mbps, bytes, ms }`。超时/失败 → `ok:false` |
-| `rankChannels(results)` | 按吞吐率（MB/s）降序重排通道；吞吐不可比（都失败）时保持原配置顺序；同速保持原相对顺序 |
+| `rankChannels(channels, resultsByLabel)` | 按吞吐率（MB/s）降序重排通道；失败通道排后、同速保持原配置顺序（依赖稳定排序） |
 
 URL 构造规则（与 updater.js `buildChannels` 保持一致）：
 - 加速通道：`{base}/https://github.com/{owner}/{repo}/releases/latest/download/{file}`（base 为 `proxyChannels` 里的前缀）
@@ -50,9 +50,9 @@ checkNow()
   ├─ isSpeedTestEnabled() 为真 且 buildChannelProbeUrls 有通道 →
   │    ├─ 并行拉各通道清单，取第一个成功者的安装包 path
   │    ├─ （path 为空 → 跳过测速，按原顺序走）
-  │    ├─ 并行对每通道 measureThroughput
+  │    ├─ 按序对每通道 measureThroughput（顺序测量避免带宽争抢导致测速失真，同时自然驱动「通道 x/n」进度）
   │    ├─ 每个通道测完即推 speedtesting 状态 { code, current, total, channel, mbps }
-  │    └─ rankChannels(results) 重排 channels，idx=0
+  │    └─ rankChannels 按吞吐重排 channels，winner 放最前，idx=0
   ├─ 测速整体异常 → log.warn，按原顺序走
   └─ 走现有 attempt()（checking → update-available → downloading → downloaded）
 ```
@@ -89,7 +89,7 @@ checkNow()
 - 某通道清单拉不到：该通道标记失败，不参与吞吐排名；只要还有通道拉到清单即继续
 - 全部通道清单都拉不到：跳过测速，按原顺序走现有逻辑（现有响应式回退兜底）
 - 单通道 Range 下载超时/失败：该通道 `ok:false`，从排名剔除
-- 测速整体抛异常：log.warn 后按原顺序继续，绝不阻断更新检查
+- 测速整体抛异常：跳过测速，按原顺序继续（`speedTestChannels` 内部捕获一切异常并 resolve null，绝不 reject 阻断更新检查）
 
 ## 测试计划
 
