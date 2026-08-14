@@ -56,3 +56,11 @@ test('formatLetter 未知 severity 回退 NeutralEvent（外部 payload 传错�
   assert.equal(L.sound, 'LetterArrive');
   assert.equal(L.color, '175,176,185');
 });
+
+test('formatLetter 原型链键（constructor/__proto__）不误入，仍回退 NeutralEvent', () => {
+  const L = formatLetter('constructor', 'x', 'y');
+  assert.equal(L.severity, 'NeutralEvent');
+  assert.equal(L.tintFile, 'letter-NeutralEvent.png');
+  const L2 = formatLetter('__proto__', 'x', 'y');
+  assert.equal(L2.severity, 'NeutralEvent');
+});
