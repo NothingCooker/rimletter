@@ -357,6 +357,7 @@ ipcMain.handle('plugins:dir', () => {
   return dir;
 });
 ipcMain.handle('market:list', () => market ? market.list() : { error: 'market 未初始化' });
+ipcMain.handle('market:refresh', () => market ? market.refresh() : { error: 'market 未初始化' });
 ipcMain.handle('market:install', (e, id) => market ? market.install(id) : { ok: false, error: 'market 未初始化' });
 ipcMain.handle('market:uninstall', (e, id) => market ? market.uninstall(id) : { ok: false, error: 'market 未初始化' });
 ipcMain.handle('market:updateAll', () => market ? market.updateAll() : { error: 'market 未初始化' });

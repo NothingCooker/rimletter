@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { isSafeId, buildChannelUrls, parseManifest, createMarket } = require('../src/main/market');
+const { isSafeId, buildChannelUrls, buildPurgeUrl, parseManifest, createMarket } = require('../src/main/market');
 
 test('isSafeId 接受字母数字下划线连字符', () => {
   assert.equal(isSafeId('weather'), true);
@@ -79,6 +79,7 @@ function makeMarket({ repo = 'o/plugins', branch = 'main', fetchImpl, pluginsDir
     configDir: path.dirname(pluginsDir),
     fetch: fetchImpl,
     now,
+    purgeDelayMs: 0,
     onChanged: () => { changed++; }
   });
   return { market, changed: () => changed, saved: () => saved };
@@ -112,7 +113,7 @@ test('list 经 jsdelivr 拉取清单并标已安装', async () => {
   assert.equal(list[0].channel, 'jsdelivr');
 });
 
-test('每次 list 都携带唯一 cb 强制刷新 jsdelivr 缓存', async () => {
+test('每次 list 都携带唯一 cb（防本机/代理缓存；CDN 缓存须靠 refresh 的 purge）', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
   const pluginsDir = path.join(dir, 'plugins');
   fs.mkdirSync(pluginsDir, { recursive: true });
@@ -124,7 +125,7 @@ test('每次 list 都携带唯一 cb 强制刷新 jsdelivr 缓存', async () => 
   await market.list();
   assert.equal(seen.length, 2);
   assert.ok(seen[0].startsWith(urls[0].url), '首次走 jsdelivr 通道');
-  assert.ok(seen[0].includes('?cb='), 'jsdelivr 请求携带 cb 破缓存');
+  assert.ok(seen[0].includes('?cb='), 'jsdelivr 请求携带唯一 cb');
   assert.notEqual(seen[0], seen[1], '两次刷新 cb 不同');
 });
 
@@ -256,4 +257,61 @@ test('updateAll 单项失败不中断且记录 error', async () => {
   assert.equal(results.length, 1);
   assert.equal(results[0].ok, false);
   assert.ok(results[0].error.includes('down'));
+});
+
+// ===== purge 破缓存 =====
+
+test('buildPurgeUrl 生成按文件路径清理 jsDelivr 缓存的 URL', () => {
+  assert.equal(
+    buildPurgeUrl('o/plugins', 'main', 'plugins.json'),
+    'https://purge.jsdelivr.net/gh/o/plugins@main/plugins.json'
+  );
+});
+
+test('refresh 先按文件路径 purge jsDelivr 缓存再拉清单', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  fs.mkdirSync(path.join(dir, 'plugins'), { recursive: true });
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const purgeUrl = buildPurgeUrl('o/plugins', 'main', 'plugins.json');
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url.split('?')[0]);
+    if (url.startsWith(purgeUrl)) return { ok: true, status: 200, text: async () => '' };
+    if (url.startsWith(urls[0].url)) return { ok: true, status: 200, text: async () => MANIFEST };
+    throw new Error('unexpected: ' + url);
+  };
+  const { market } = makeMarket({ fetchImpl, pluginsDir: path.join(dir, 'plugins') });
+  const list = await market.refresh();
+  assert.equal(calls[0], purgeUrl, '先 purge');
+  assert.equal(calls[1], urls[0].url, '再走 jsdelivr 拉清单');
+  assert.equal(list[0].id, 'weather');
+});
+
+test('refresh 在 purge 失败时仍正常拉取清单', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  fs.mkdirSync(path.join(dir, 'plugins'), { recursive: true });
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const purgeUrl = buildPurgeUrl('o/plugins', 'main', 'plugins.json');
+  const fetchImpl = routeFetch({
+    [purgeUrl]: { error: new Error('purge down') },
+    [urls[0].url]: { text: MANIFEST }
+  });
+  const { market } = makeMarket({ fetchImpl, pluginsDir: path.join(dir, 'plugins') });
+  const list = await market.refresh();
+  assert.equal(list[0].id, 'weather');
+});
+
+test('普通 list 不触发 purge（只在显式 refresh 时清理 CDN 缓存）', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  fs.mkdirSync(path.join(dir, 'plugins'), { recursive: true });
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const purgeUrl = buildPurgeUrl('o/plugins', 'main', 'plugins.json');
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url.split('?')[0]);
+    return { ok: true, status: 200, text: async () => MANIFEST };
+  };
+  const { market } = makeMarket({ fetchImpl, pluginsDir: path.join(dir, 'plugins') });
+  await market.list();
+  assert.ok(!calls.includes(purgeUrl), '普通 list 不应调用 purge');
 });

@@ -20,6 +20,12 @@ function buildChannelUrls(repo, branch, filePath) {
   ];
 }
 
+// jsDelivr 官方缓存清理 URL。注意：query string（?cb=）不在 CDN 缓存键里，破不了缓存；
+// 且 branch 引用须按具体文件路径 purge（仓库级 @branch/ 不生效），清理后才读得到新内容。
+function buildPurgeUrl(repo, branch, filePath) {
+  return 'https://purge.jsdelivr.net/gh/' + repo + '@' + branch + '/' + filePath;
+}
+
 // 校验并归一清单文本 → [{id, name, desc, author, file, version}]
 function parseManifest(text) {
   let data;
@@ -46,15 +52,22 @@ function parseManifest(text) {
   });
 }
 
-function createMarket({ getConfig, setConfig = () => {}, configDir, fetch, now = () => Date.now(), onChanged = () => {} }) {
+function createMarket({ getConfig, setConfig = () => {}, configDir, fetch, now = () => Date.now(), onChanged = () => {}, purgeDelayMs = 1000 }) {
   const pluginsDir = () => path.join(configDir, 'plugins');
   const repo = () => (getConfig().market && getConfig().market.repo) || DEFAULT_REPO;
   const branch = () => (getConfig().market && getConfig().market.branch) || DEFAULT_BRANCH;
 
-  // 依次尝试通道，全部失败抛错
-  async function fetchText(filePath) {
+  // 依次尝试通道，全部失败抛错。opts.purge=true 时先按文件路径清理 jsDelivr 缓存再拉取，
+  // 否则 CDN 最长缓存 12 小时，刷新后仍读到旧清单（?cb= 破不了 CDN 缓存，须走 purge API）。
+  async function fetchText(filePath, opts = {}) {
+    if (opts.purge) {
+      try {
+        await fetch(buildPurgeUrl(repo(), branch(), filePath), { signal: AbortSignal.timeout(TIMEOUT_MS) });
+        if (purgeDelayMs > 0) await new Promise(r => setTimeout(r, purgeDelayMs)); // 等清理传播到边缘节点
+      } catch (e) { /* purge 失败不致命，继续走普通拉取（最坏读到缓存旧清单） */ }
+    }
     let lastErr = null;
-    const cb = String(now()); // 每次拉取携带唯一 cb，强制 jsdelivr 回源，避免读到旧缓存
+    const cb = String(now()); // 携带唯一 cb，仍可破本机 HTTP/代理缓存，但 jsDelivr CDN 缓存须靠上面的 purge
     for (const ch of buildChannelUrls(repo(), branch(), filePath)) {
       try {
         const url = ch.name === 'jsdelivr' ? ch.url + '?cb=' + encodeURIComponent(cb) : ch.url;
@@ -79,9 +92,9 @@ function createMarket({ getConfig, setConfig = () => {}, configDir, fetch, now =
     if (disabled.includes(id)) getConfig().plugins.disabled = disabled.filter(n => n !== id);
   }
 
-  async function list() {
+  async function list(opts) {
     const installed = getInstalledIds();
-    const { channel, text } = await fetchText('plugins.json');
+    const { channel, text } = await fetchText('plugins.json', opts);
     return parseManifest(text).map(p => ({ ...p, installed: installed.has(p.id), channel }));
   }
 
@@ -134,7 +147,10 @@ function createMarket({ getConfig, setConfig = () => {}, configDir, fetch, now =
     return results;
   }
 
-  return { list, install, uninstall, updateAll };
+  // 显式刷新：先 purge jsDelivr 缓存再拉清单（普通 list 不 purge，避免滥用清理 API）
+  const refresh = () => list({ purge: true });
+
+  return { list, refresh, install, uninstall, updateAll };
 }
 
-module.exports = { isSafeId, buildChannelUrls, parseManifest, createMarket };
+module.exports = { isSafeId, buildChannelUrls, buildPurgeUrl, parseManifest, createMarket };

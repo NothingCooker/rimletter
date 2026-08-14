@@ -352,7 +352,18 @@ async function renderMarketPane() {
     '<div id="mkt-list" style="font-size:12px;color:#c8d0da">加载中…</div>' +
     '<div style="margin:8px 0;font-size:11px;color:#7f8a96">⚠ 插件将获得本机完全执行权限，仅从官方仓库安装可信插件。</div>';
 
-  document.getElementById('mkt-refresh').addEventListener('click', renderMarket);
+  document.getElementById('mkt-refresh').addEventListener('click', async () => {
+    const btn = document.getElementById('mkt-refresh');
+    btn.textContent = '刷新中…';
+    try {
+      const data = await window.rimletter.refreshMarket(); // 先 purge jsDelivr 缓存再拉清单
+      renderMarket(data);
+    } catch (e) {
+      document.getElementById('mkt-list').innerHTML = '<span style="color:#ff8888">刷新失败：' + esc((e && e.message) || e) + '</span>';
+    } finally {
+      btn.textContent = '刷新市场';
+    }
+  });
   document.getElementById('mkt-update-all').addEventListener('click', async () => {
     const btn = document.getElementById('mkt-update-all');
     btn.textContent = '更新中…';
@@ -407,11 +418,11 @@ async function renderLocalPlugins() {
   }));
 }
 
-async function renderMarket() {
+async function renderMarket(prefetched) {
   const box = document.getElementById('mkt-list');
   let data;
   try {
-    data = await window.rimletter.listMarket();
+    data = prefetched || await window.rimletter.listMarket();
   } catch (e) {
     box.innerHTML = '<span style="color:#ff8888">市场加载失败：' + esc(e.message || e) + '</span>';
     return;

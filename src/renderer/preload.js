@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('rimletter', {
   checkForUpdate: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   listMarket: () => ipcRenderer.invoke('market:list'),
+  refreshMarket: () => ipcRenderer.invoke('market:refresh'),
   installPlugin: (id) => ipcRenderer.invoke('market:install', id),
   uninstallPlugin: (id) => ipcRenderer.invoke('market:uninstall', id),
   updateAllPlugins: () => ipcRenderer.invoke('market:updateAll'),
