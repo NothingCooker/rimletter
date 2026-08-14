@@ -16,20 +16,31 @@ test('mem 读取占用率', async () => {
   assert.equal(out.usedPct, 91);
 });
 
-test('disk 返回各盘符 freeGB', async () => {
-  const mock = { fsSize: async () => ([{ mount: 'C:', available: 8e9 }, { mount: 'D:', available: 2e11 }]) };
-  const sensors = createSensors({ si: mock });
+test('disk 返回各盘符 freeGB（用 fs.statfsSync，无子进程）', async () => {
+  const fs = {
+    existsSync: () => true,
+    statfsSync: (root) => root === 'C:\\' ? { bavail: 8e9, bsize: 1, blocks: 1000, bfree: 500 } : { bavail: 2e11, bsize: 1, blocks: 1000, bfree: 500 }
+  };
+  const sensors = createSensors({ si: {}, fs, listDrives: () => ['C:\\', 'D:\\'] });
   const out = await sensors.disk.read();
   assert.equal(out[0].mount, 'C:');
   assert.equal(Math.round(out[0].freeGB), 8);
+  assert.equal(Math.round(out[1].freeGB), 200);
 });
 
-test('gpu 读取温度与占用（温度可缺失时置 undefined）', async () => {
-  const mock = { graphics: async () => ({ controllers: [{ temperatureGpu: null, utilizationGpu: 77 }] }) };
-  const sensors = createSensors({ si: mock });
+test('disk 盘符不可访问时跳过（statfsSync 抛错）', async () => {
+  const fs = { existsSync: () => true, statfsSync: () => { throw new Error('device not ready'); } };
+  const sensors = createSensors({ si: {}, fs, listDrives: () => ['A:\\', 'B:\\'] });
+  const out = await sensors.disk.read();
+  assert.deepEqual(out, []);
+});
+
+test('gpu nvidia-smi 温度字段缺失时置 undefined', async () => {
+  const execFile = async () => ({ stdout: '1, \r\n', stderr: '' });
+  const sensors = createSensors({ si: {}, execFile });
   const out = await sensors.gpu.read();
+  assert.equal(out.load, 1);
   assert.equal(out.temp, undefined);
-  assert.equal(out.load, 77);
 });
 
 test('gpu 用异步 nvidia-smi 快速路径读取（不依赖 si.graphics、不阻塞事件循环）', async () => {
@@ -49,13 +60,15 @@ test('gpu nvidia-smi 输出多行时只取第一块 GPU', async () => {
   assert.equal(out.temp, 61);
 });
 
-test('gpu nvidia-smi 不可用时回退 si.graphics（温度缺失置 undefined）', async () => {
+test('gpu nvidia-smi 不可用（非 NVIDIA）时不回退 si.graphics，返回无数据', async () => {
   const execFile = async () => { throw new Error('ENOENT: nvidia-smi'); };
-  const si = { graphics: async () => ({ controllers: [{ temperatureGpu: null, utilizationGpu: 77 }] }) };
+  let graphicsCalled = false;
+  const si = { graphics: async () => { graphicsCalled = true; return { controllers: [] }; } };
   const sensors = createSensors({ si, execFile });
   const out = await sensors.gpu.read();
   assert.equal(out.temp, undefined);
-  assert.equal(out.load, 77);
+  assert.equal(out.load, undefined);
+  assert.equal(graphicsCalled, false, '不应调用 si.graphics（避免每 2s spawn 7 个 powershell）');
 });
 
 test('sensors 提供 snapshot 接口，返回全部传感器值', async () => {
@@ -75,9 +88,13 @@ test('sensors 提供 snapshot 接口，返回全部传感器值', async () => {
 
 test('snapshot(keys) 只读取指定传感器，其余不读', async () => {
   const called = [];
-  const mk = name => async () => { called.push(name); return {}; };
-  const mock = { currentLoad: mk('cpu'), mem: mk('mem'), fsSize: mk('disk'), graphics: mk('gpu') };
-  const sensors = createSensors({ si: mock });
+  const si = {
+    currentLoad: async () => { called.push('cpu'); return {}; },
+    mem: async () => { called.push('mem'); return { total: 100, active: 50 }; }
+  };
+  const execFile = async () => { called.push('gpu'); return { stdout: '1, 42', stderr: '' }; };
+  const fs = { existsSync: () => true, statfsSync: () => { called.push('disk'); return { bavail: 1, bsize: 1, blocks: 10, bfree: 5 }; } };
+  const sensors = createSensors({ si, execFile, fs, listDrives: () => ['C:\\'] });
   const snap = await sensors.snapshot(['cpu', 'gpu']);
   assert.deepEqual(called, ['cpu', 'gpu']);
   assert.deepEqual(Object.keys(snap).sort(), ['cpu', 'gpu']);

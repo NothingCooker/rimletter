@@ -1,5 +1,18 @@
 // src/main/sensors.js
-function createSensors({ si, execFile, extraSensors }) {
+const nodeFs = require('node:fs');
+
+// 枚举 Windows 盘符（A:-\Z:\），只保留可访问的根路径。无子进程。
+function defaultListDrives(fs) {
+  const drives = [];
+  for (let c = 65; c <= 90; c++) {
+    const root = String.fromCharCode(c) + ':\\';
+    try { if (fs.existsSync(root)) drives.push(root); } catch { /* 不可访问的盘符跳过 */ }
+  }
+  return drives;
+}
+
+function createSensors({ si, execFile, extraSensors, fs = nodeFs, listDrives } = {}) {
+  const drives = listDrives || (() => defaultListDrives(fs));
   const cpu = {
     name: 'CPU',
     async read() {
@@ -18,23 +31,32 @@ function createSensors({ si, execFile, extraSensors }) {
   };
   const disk = {
     name: '磁盘',
+    // 用 fs.statfsSync 替代 si.fsSize()：后者在 Windows 上每次轮询 spawn 2 个 powershell
+    // （Get-CimInstance Win32_LogicalDisk + Get-WmiObject diskdrive）。实测 statfsSync 的
+    // freeGB/usedPct 与 fsSize 完全一致，且零子进程（v0.4.1 修复高 CPU + powershell 堆积）。
     async read() {
-      const list = await si.fsSize();
-      return list.map(d => ({
-        mount: d.mount,
-        fs: d.fs,
-        freeGB: d.available / 1e9,
-        usedPct: typeof d.use === 'number' ? d.use : 0
-      }));
+      const out = [];
+      for (const root of drives()) {
+        try {
+          const s = fs.statfsSync(root);
+          const mount = root.replace(/\\$/, '');
+          out.push({
+            mount,
+            fs: mount,
+            freeGB: (s.bavail * s.bsize) / 1e9,
+            usedPct: s.blocks > 0 ? ((s.blocks - s.bfree) / s.blocks) * 100 : 0
+          });
+        } catch { /* 盘符存在但暂不可访问（如无碟光驱）跳过 */ }
+      }
+      return out;
     }
   };
   const gpu = {
     name: 'GPU',
-    // systeminformation 的 graphics() 在 Windows 上内部用 execSync 同步跑 nvidia-smi + WMI 枚举，
-    // 实测每次调用墙钟 ~0.5s，其中约 100ms 是主进程事件循环的同步冻结；而监控每 pollIntervalMs
-    // （默认 2s）轮询一次 → 周期性硬冻结，表现为「鼠标时不时卡一下但占用不高」（混合显卡笔记本
-    // 上 nvidia-smi 更慢、更明显）。故快速路径改为异步 execFile 直查所需两个字段，不阻塞事件循环；
-    // nvidia-smi 不可用（非 NVIDIA）时回退 si.graphics()。
+    // 仅 NVIDIA：异步 nvidia-smi 直查（不阻塞事件循环）。非 NVIDIA → 无 GPU 数据。
+    // 不回退 si.graphics()：它在 Windows 上每次 spawn 7 个 powershell（Get-CimInstance
+    // win32_VideoController/desktopmonitor/WmiMonitor 等），无独显机每 2s 轮询一轮 → 子进程
+    // 堆积 + 高 CPU（v0.4.1 修复）。GPU 温度/占用仅支持 NVIDIA（设置页已注明）。
     async read() {
       if (execFile) {
         try {
@@ -50,15 +72,10 @@ function createSensors({ si, execFile, extraSensors }) {
             load: Number.isFinite(load) ? load : undefined
           };
         } catch {
-          // nvidia-smi 缺失/查询失败 → 回退下方 systeminformation 路径
+          // nvidia-smi 缺失/查询失败 → 无 GPU 数据（不回退 si.graphics）
         }
       }
-      const g = await si.graphics();
-      const c = g.controllers && g.controllers[0];
-      return {
-        temp: typeof c?.temperatureGpu === 'number' ? c.temperatureGpu : undefined,
-        load: typeof c?.utilizationGpu === 'number' ? c.utilizationGpu : undefined
-      };
+      return { temp: undefined, load: undefined };
     }
   };
   // 派发表：内置 + 插件（extraSensors 返回 {name → {read}}）。
