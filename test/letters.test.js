@@ -48,3 +48,11 @@ test('formatLetter 自定义音效优先于紧急度默认', () => {
   const L = formatLetter('ThreatSmall', 'x', 'y', { sound: 'MyCustom' });
   assert.equal(L.sound, 'MyCustom');
 });
+
+test('formatLetter 未知 severity 回退 NeutralEvent（外部 payload 传错值不抛错）', () => {
+  const L = formatLetter('BogusSeverity', 'x', 'y');
+  assert.equal(L.severity, 'NeutralEvent');
+  assert.equal(L.tintFile, 'letter-NeutralEvent.png');
+  assert.equal(L.sound, 'LetterArrive');
+  assert.equal(L.color, '175,176,185');
+});
