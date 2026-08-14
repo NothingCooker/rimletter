@@ -116,3 +116,40 @@ test('rankChannels 全失败保原序', () => {
   const byLabel = { a: { ok: false }, b: { ok: false } };
   assert.deepEqual(rankChannels(channels, byLabel).map(c => c.label), ['a', 'b']);
 });
+
+test('measureThroughput body 阶段停滞超时返回 ok:false', async () => {
+  let rejectRead;
+  const pending = new Promise((_, rej) => { rejectRead = rej; });
+  const reader = { read: () => pending, cancel: async () => {} };
+  const body = { getReader: () => reader, _rejectRead: () => rejectRead(new Error('aborted')) };
+  const fetch = (url, opts) => new Promise((resolve) => {
+    opts.signal.addEventListener('abort', () => body._rejectRead());
+    resolve({ ok: true, status: 200, body });
+  });
+  const r = await measureThroughput(fetch, 'u', { chunkBytes: 1024 * 1024, timeoutMs: 50 });
+  assert.equal(r.ok, false);
+});
+
+test('measureThroughput 服务器忽略 Range 时仍按 chunkBytes 截断', async () => {
+  const body = new ReadableStream({
+    start(c) { for (let i = 0; i < 5; i++) c.enqueue(new Uint8Array(1024 * 1024)); c.close(); }
+  });
+  const fetch = async () => ({ ok: true, status: 200, body });
+  const r = await measureThroughput(fetch, 'u', { chunkBytes: 1024 * 1024, timeoutMs: 5000 });
+  assert.equal(r.ok, true);
+  assert.ok(r.bytes <= 1024 * 1024 * 2, '应停在 chunkBytes 附近，不读满 5MB');
+});
+
+test('rankChannels 无测速结果的通道按失败沉底', () => {
+  const channels = [{ label: 'a' }, { label: 'b' }, { label: 'c' }];
+  const byLabel = { a: { ok: true, mbps: 5 }, b: { ok: true, mbps: 9 } }; // c 缺失
+  assert.deepEqual(rankChannels(channels, byLabel).map(c => c.label), ['b', 'a', 'c']);
+});
+
+test('rankChannels 不改动原数组', () => {
+  const channels = [{ label: 'a' }, { label: 'b' }, { label: 'c' }];
+  const byLabel = { a: { ok: true, mbps: 5 }, b: { ok: true, mbps: 9 }, c: { ok: true, mbps: 7 } };
+  const before = channels.map(c => c.label);
+  rankChannels(channels, byLabel);
+  assert.deepEqual(channels.map(c => c.label), before);
+});
