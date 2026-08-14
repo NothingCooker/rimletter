@@ -55,4 +55,37 @@ async function fetchManifest(fetch, url, timeoutMs = DEFAULT_TIMEOUT_MS) {
   }
 }
 
-module.exports = { buildChannelProbeUrls, fetchManifest, parsePath, withTimeoutFetch, DEFAULT_CHUNK_BYTES, DEFAULT_TIMEOUT_MS };
+// 对安装包 Range 下载前 chunkBytes 字节，测量吞吐。返回 { ok, mbps, bytes, ms } 或 { ok:false, error, bytes, ms }
+async function measureThroughput(fetch, url, { chunkBytes = DEFAULT_CHUNK_BYTES, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+  const start = Date.now();
+  let received = 0;
+  try {
+    const res = await withTimeoutFetch(fetch, url, timeoutMs, { headers: { Range: 'bytes=0-' + (chunkBytes - 1) } });
+    if (!res.ok) return { ok: false, error: 'HTTP ' + res.status, bytes: 0, ms: Date.now() - start };
+    if (!res.body) return { ok: false, error: '无响应体', bytes: 0, ms: Date.now() - start };
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value ? value.length : 0;
+      if (received >= chunkBytes) break;
+    }
+    if (received <= 0) return { ok: false, error: '0 字节', bytes: 0, ms: Date.now() - start };
+    const ms = Date.now() - start;
+    return { ok: true, mbps: (received / (1024 * 1024)) / (ms / 1000), bytes: received, ms };
+  } catch (e) {
+    const ms = Date.now() - start;
+    return { ok: false, error: (e && e.message) || String(e), bytes: received, ms };
+  }
+}
+
+// 按吞吐率重排通道：最快在前，失败通道沉底，同速保原序（Array#sort 稳定）
+function rankChannels(channels, resultsByLabel) {
+  const score = (label) => {
+    const r = resultsByLabel[label];
+    return r && r.ok ? r.mbps : -1;
+  };
+  return [...channels].sort((a, b) => score(b.label) - score(a.label));
+}
+
+module.exports = { buildChannelProbeUrls, fetchManifest, parsePath, measureThroughput, rankChannels, withTimeoutFetch, DEFAULT_CHUNK_BYTES, DEFAULT_TIMEOUT_MS };
