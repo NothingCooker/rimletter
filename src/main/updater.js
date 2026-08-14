@@ -14,7 +14,9 @@ function createUpdater(deps) {
 
   let state = { code: 'idle' };
   let downloadedInfo = null;
-  let checking = false;
+  let checking = false; // 当前是否有 checkForUpdates 在飞行：error 事件据此区分检查/下载阶段
+  let channels = [];    // 当前一轮尝试的通道列表
+  let idx = 0;          // 当前尝试的通道下标
 
   function setState(patch) { state = { ...state, ...patch }; onStatus(state); }
   function getState() { return { ...state }; }
@@ -50,33 +52,44 @@ function createUpdater(deps) {
       onDownloaded(info);
     });
     autoUpdater.on('error', (err) => {
-      // 检查阶段（checking=true）错误由 checkNow 的通道回退处理；
-      // 下载阶段（checking=false）错误直接报错，不换通道。
-      if (!checking) setState({ code: 'error', error: (err && err.message) || String(err) });
+      // 检查阶段（checking=true）错误由 attempt 的 onCheckFail 换通道处理；
+      // 下载阶段（checking=false）错误也换下一通道重试（下载中断/连接失败同算通道失败）。
+      if (checking) return;
+      onDownloadFail(err);
     });
+  }
+
+  // 在当前通道上跑一次「检查 +（自动）下载」。
+  function attempt() {
+    const ch = channels[idx];
+    let feedErr = null;
+    try { ch.apply(); } catch (e) { feedErr = e; }
+    if (feedErr) return onCheckFail(feedErr);
+    checking = true;
+    setState({ code: 'checking', channel: ch.label });
+    return autoUpdater.checkForUpdates()
+      .then(() => { checking = false; })
+      .catch((err) => { checking = false; return onCheckFail(err); });
+  }
+
+  // 检查阶段失败：换下一通道重试。
+  function onCheckFail(err) {
+    if (idx < channels.length - 1) { idx++; return attempt(); }
+    setState({ code: 'error', error: (err && err.message) || String(err) });
+  }
+
+  // 下载阶段失败：换下一通道重试（检查+下载整段重来）。
+  function onDownloadFail(err) {
+    if (idx < channels.length - 1) { idx++; attempt(); }
+    else setState({ code: 'error', error: (err && err.message) || String(err) });
   }
 
   function checkNow() {
     if (!isEnabled()) { setState({ code: 'disabled' }); return Promise.resolve(null); }
     if (checking) return Promise.resolve(null);
-    checking = true;
-    const channels = buildChannels();
-    let idx = 0;
-    function attempt() {
-      const ch = channels[idx];
-      let feedErr = null;
-      try { ch.apply(); } catch (e) { feedErr = e; }
-      if (feedErr) return onFail(feedErr);
-      setState({ code: 'checking', channel: ch.label });
-      return autoUpdater.checkForUpdates()
-        .then(() => { /* 成功：事件监听会置最终状态 */ })
-        .catch(onFail);
-    }
-    function onFail(err) {
-      if (idx < channels.length - 1) { idx++; return attempt(); }
-      setState({ code: 'error', error: (err && err.message) || String(err) });
-    }
-    return attempt().finally(() => { checking = false; });
+    channels = buildChannels();
+    idx = 0;
+    return attempt();
   }
 
   function scheduleInitialCheck() {

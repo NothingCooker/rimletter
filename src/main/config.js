@@ -12,7 +12,7 @@ const DEFAULT_CONFIG = {
   api: { enabled: true, port: 17301, token: 'auto', cors: false },
   appearance: { iconSize: 64 },
   sound: { enabled: true, volume: 0.25 },
-  update: { enabled: true, proxyChannels: ['https://gh.ddlc.top', 'https://ghproxy.net'] },
+  update: { enabled: true, proxyChannels: ['https://ghproxy.net', 'https://gh-proxy.com'] },
   market: { repo: 'NothingCooker/rimletter-official-plugins', branch: 'main' },
   log: { level: 'info' }, // 日志级别：debug | info | warn | error
   plugins: { disabled: ['example'] }, // example 为演示插件，默认禁用，可在设置中启用
@@ -24,6 +24,20 @@ const DEFAULT_CONFIG = {
     { id: 'builtin-disk', sensor: 'disk', metric: 'freeGB', operator: '<', threshold: 10, durationMs: 0, severity: 'NeutralEvent', label: '磁盘空间不足', description: '磁盘剩余空间不足 10GB', sound: 'auto', enabled: true, recoverPct: 5 }
   ]
 };
+
+// 旧默认更新通道：gh.ddlc.top 已于 2026-08-14 起全站 HTTP 429 失效。
+// 老用户 config.json 里若存的是这套旧默认值（从未自定义过通道），加载时自动迁移为新列表。
+const OLD_UPDATE_CHANNELS = ['https://gh.ddlc.top', 'https://ghproxy.net'];
+
+// 返回是否发生了迁移；调用方据此决定是否持久化。
+function migrateConfig(cfg) {
+  const channels = cfg && cfg.update && cfg.update.proxyChannels;
+  if (Array.isArray(channels) && JSON.stringify(channels) === JSON.stringify(OLD_UPDATE_CHANNELS)) {
+    cfg.update.proxyChannels = [...DEFAULT_CONFIG.update.proxyChannels];
+    return true;
+  }
+  return false;
+}
 
 function configPath(dir) {
   return path.join(dir, 'config.json');
@@ -45,7 +59,9 @@ function loadConfig(dir) {
   try {
     if (fs.existsSync(configPath(dir))) {
       const raw = JSON.parse(fs.readFileSync(configPath(dir), 'utf-8'));
-      return deepMerge(defaults, raw);
+      const cfg = deepMerge(defaults, raw);
+      if (migrateConfig(cfg)) saveConfig(dir, cfg);
+      return cfg;
     }
   } catch (e) { /* 损坏则回退默认 */ }
   if (defaults.api.token === 'auto') {
@@ -60,4 +76,4 @@ function saveConfig(dir, cfg) {
   fs.writeFileSync(configPath(dir), JSON.stringify(cfg, null, 2), 'utf-8');
 }
 
-module.exports = { DEFAULT_CONFIG, loadConfig, saveConfig, SEVERITIES };
+module.exports = { DEFAULT_CONFIG, loadConfig, saveConfig, SEVERITIES, migrateConfig, OLD_UPDATE_CHANNELS };

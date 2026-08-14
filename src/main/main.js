@@ -141,7 +141,7 @@ function initUpdater() {
     isEnabled: () => !!(config.update && config.update.enabled),
     proxyChannels: (config.update && config.update.proxyChannels) || [],
     publishRepo: 'NothingCooker/rimletter',
-    onStatus: (st) => { if (log) log.info('更新状态', st.code, st.version || ''); sendToSettings('update:status', st); },
+    onStatus: (st) => { if (log) log.info('更新状态', st.code, st.version || '', st.channel || '', st.error || ''); sendToSettings('update:status', st); },
     onDownloaded: () => triggerLetter({
       severity: 'NeutralEvent',
       title: 'RimLetter 新版本已下载',

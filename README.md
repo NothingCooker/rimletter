@@ -2,11 +2,11 @@
 
 **⬇️ 下载最新版（Windows · NSIS 安装程序）**
 
-- **x64（推荐）**：[GitHub Release 下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-x64.exe) · [中国大陆加速下载](https://gh.ddlc.top/https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-x64.exe)
-- **ARM64**：[GitHub Release 下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-arm64.exe) · [加速下载](https://gh.ddlc.top/https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-arm64.exe)
+- **x64（推荐）**：[GitHub Release 下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-x64.exe) · [中国大陆加速下载](https://ghproxy.net/https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-x64.exe)
+- **ARM64**：[GitHub Release 下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-arm64.exe) · [加速下载](https://ghproxy.net/https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-arm64.exe)
 - **x86（32 位）**：[GitHub Release 下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-ia32.exe)
 
-> 加速链接走 gh.ddlc.top 公益镜像；若失效，把链接中域名 `gh.ddlc.top` 换成 `ghproxy.net` 即可。安装包内置自动更新，启动后按当前系统架构自动匹配对应安装包（x64/ia32 读 `latest.yml`，arm64 读 `latest-arm64.yml`）。
+> 加速链接走 ghproxy.net 公益镜像（备选 gh-proxy.com）。安装包内置自动更新，启动后按当前系统架构自动匹配对应安装包（x64/ia32 读 `latest.yml`，arm64 读 `latest-arm64.yml`）。
 
 一个参考《边缘世界》(RimWorld) 右侧 Letter 信件播报系统的桌面功能性摆件。当硬件占用过高（CPU / 内存 / 磁盘 / GPU）时，信从屏幕右缘坠落滑入提醒；平时完全隐身，告警才出现。全程使用游戏解包的原始 UI 素材与配色，并支持本地 HTTP API 和手写 JS 插件扩展。
 官方插件仓库：https://github.com/NothingCooker/rimletter-official-plugins

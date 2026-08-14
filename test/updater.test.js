@@ -140,16 +140,33 @@ test('无 proxyChannels 时只走原生 github feed', async () => {
   assert.deepEqual(au.feedHistory.map(f => f.provider), ['github']);
 });
 
-test('下载阶段错误不换通道', async () => {
+test('下载阶段错误自动换下一通道重试并最终成功', async () => {
+  const au = mockAutoUpdater({ failFirst: 0 });
+  const seen = [];
+  const updater = createUpdater({ autoUpdater: au, proxyChannels: ['https://p1', 'https://p2'], publishRepo: 'o/r', onStatus: s => seen.push(s) });
+  updater.init();
+  await updater.checkNow(); // 检查成功（p1）
+  const beforeLen = au.feedHistory.length;
+  au.emit('error', new Error('下载中断'));
+  assert.equal(au.feedHistory.length, beforeLen + 1, '下载失败后换下一通道');
+  assert.equal(seen[seen.length - 1].code, 'checking', '回退后对新通道重新检查');
+  au.emit('update-not-available'); // 新通道检查结果
+  assert.equal(seen[seen.length - 1].code, 'uptodate');
+});
+
+test('下载阶段全部通道失败置 error，且最后通道失败不再换通道', async () => {
   const au = mockAutoUpdater({ failFirst: 0 });
   const seen = [];
   const updater = createUpdater({ autoUpdater: au, proxyChannels: ['https://p1'], publishRepo: 'o/r', onStatus: s => seen.push(s) });
   updater.init();
-  await updater.checkNow(); // 检查成功
-  const historyLen = au.feedHistory.length;
-  au.emit('error', new Error('下载中断'));
-  assert.equal(au.feedHistory.length, historyLen, '错误事件不触发换通道');
+  await updater.checkNow(); // p1 检查成功
+  au.emit('error', new Error('下载中断')); // p1 下载失败 → 换 github
+  await new Promise(r => setTimeout(r, 0)); // 等 github 检查微任务把 checking 复位
+  const beforeLen = au.feedHistory.length; // p1 + github
+  au.emit('error', new Error('下载中断2')); // github 下载失败 → 无剩余通道
   assert.equal(seen[seen.length - 1].code, 'error');
+  assert.ok(seen[seen.length - 1].error.includes('下载中断2'));
+  assert.equal(au.feedHistory.length, beforeLen, '最后通道失败不再换通道');
 });
 
 test('setFeedURL 抛错时视为该通道失败并换下一通道', async () => {
