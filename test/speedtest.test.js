@@ -63,6 +63,17 @@ test('fetchManifest 超时返回 ok:false', async () => {
   assert.equal(r.ok, false);
 });
 
+test('fetchManifest body 阶段停滞超时返回 ok:false', async () => {
+  let rejectText;
+  const textPromise = new Promise((_, rej) => { rejectText = rej; });
+  const fetch = (url, opts) => new Promise((resolve) => {
+    opts.signal.addEventListener('abort', () => rejectText(new Error('aborted')));
+    resolve({ ok: true, status: 200, text: () => textPromise });
+  });
+  const r = await fetchManifest(fetch, 'u', 50);
+  assert.equal(r.ok, false);
+});
+
 const { measureThroughput, rankChannels } = require('../src/main/speedtest');
 
 function streamBody(bytes) {

@@ -3,13 +3,6 @@
 const DEFAULT_CHUNK_BYTES = 1024 * 1024; // 1MB
 const DEFAULT_TIMEOUT_MS = 5000;
 
-// 带超时的 fetch：AbortController 超时后 abort
-function withTimeoutFetch(fetch, url, timeoutMs, options = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
-
 // 通道探测 URL：每个加速前缀一个清单/安装包基址，末尾追加原生 github
 function buildChannelProbeUrls({ proxyChannels = [], publishRepo, arch }) {
   const parts = publishRepo.split('/');
@@ -43,15 +36,20 @@ function parsePath(ymlText) {
 }
 
 // 下载清单，返回 { ok, path } 或 { ok: false, error }
+// 超时覆盖整段（含 body 读取）——停滞的连接会被 abort，避免挂起更新流程
 async function fetchManifest(fetch, url, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await withTimeoutFetch(fetch, url, timeoutMs);
+    const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) return { ok: false, error: 'HTTP ' + res.status };
     const path = parsePath(await res.text());
     if (!path) return { ok: false, error: '清单无 path' };
     return { ok: true, path };
   } catch (e) {
     return { ok: false, error: (e && e.message) || String(e) };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -98,4 +96,4 @@ function rankChannels(channels, resultsByLabel) {
   return [...channels].sort((a, b) => score(b.label) - score(a.label));
 }
 
-module.exports = { buildChannelProbeUrls, fetchManifest, parsePath, measureThroughput, rankChannels, withTimeoutFetch, DEFAULT_CHUNK_BYTES, DEFAULT_TIMEOUT_MS };
+module.exports = { buildChannelProbeUrls, fetchManifest, parsePath, measureThroughput, rankChannels, DEFAULT_CHUNK_BYTES, DEFAULT_TIMEOUT_MS };
