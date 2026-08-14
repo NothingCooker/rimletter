@@ -103,7 +103,7 @@ function createUpdater(deps) {
     autoUpdater.on('error', (err) => {
       // 检查阶段（checking=true）错误由 attempt 的 onCheckFail 换通道处理；
       // 下载阶段（checking=false）错误也换下一通道重试（下载中断/连接失败同算通道失败）。
-      if (checking) return;
+      if (checking || speedTesting) return;
       onDownloadFail(err);
     });
   }
@@ -140,7 +140,8 @@ function createUpdater(deps) {
     idx = 0;
     if (!shouldSpeedTest()) return attempt();
     speedTesting = true;
-    return speedTestChannels().then(reordered => {
+    const p = (() => { try { return speedTestChannels(); } catch (e) { return Promise.resolve(null); } })();
+    return p.then(reordered => {
       speedTesting = false;
       if (reordered && reordered.length) channels = reordered;
       return attempt();
