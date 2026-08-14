@@ -9,7 +9,7 @@ const DEFAULT_CONFIG = {
   autoDismissMs: 20000,
   recoveryDismissMs: 10000,
   recoveryNotifications: true, // 是否播报「已恢复正常」信（关闭后告警状态仍正常复位，只是不再广播恢复信）
-  api: { enabled: true, port: 17301, token: 'auto', cors: false },
+  api: { enabled: true, port: 17301, token: 'auto', host: '127.0.0.1', cors: false },
   appearance: { iconSize: 64 },
   sound: { enabled: true, volume: 0.25 },
   update: { enabled: true, proxyChannels: ['https://ghproxy.net', 'https://gh-proxy.com'], speedTest: true },

@@ -71,15 +71,16 @@ function createApiServer({ token, onLetter, getState, getRules, addRule, updateR
   }
 
   return {
-    start(p = 0) {
+    start(p = 0, host = '127.0.0.1') {
       return new Promise(resolve => {
         server = http.createServer(handle);
-        server.listen(p, '127.0.0.1', () => { port = server.address().port; resolve(); });
+        server.listen(p, host, () => { port = server.address().port; resolve(); });
       });
     },
     stop() {
       return new Promise(resolve => { if (server) server.close(resolve); else resolve(); });
     },
+    host: () => (server && server.address() ? server.address().address : '127.0.0.1'),
     port: () => port
   };
 }

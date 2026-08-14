@@ -119,3 +119,19 @@ test('CORS 开启：OPTIONS 预检 204，POST 响应带 ACAO 头', async () => {
   assert.equal(post.headers['access-control-allow-origin'], '*');
   await srv.stop();
 });
+
+test('start 缺省 host 绑定 127.0.0.1', async () => {
+  const { srv } = await startServer();
+  assert.equal(srv.host(), '127.0.0.1');
+  await srv.stop();
+});
+
+test('start 支持显式指定绑定 host（0.0.0.0）', async () => {
+  const srv = createApiServer({
+    token: 't', onLetter: () => {}, getState: async () => ({}), getRules: () => [],
+    addRule: () => ({}), updateRule: () => ({}), deleteRule: () => ({}), reload: () => ({})
+  });
+  await srv.start(0, '0.0.0.0');
+  assert.equal(srv.host(), '0.0.0.0');
+  await srv.stop();
+});
