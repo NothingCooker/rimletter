@@ -85,3 +85,16 @@ test('market 配置可持久化覆盖', () => {
   const again = loadConfig(dir);
   assert.equal(again.market.repo, 'me/plugins');
 });
+
+test('update.speedTest 默认开启', () => {
+  assert.equal(DEFAULT_CONFIG.update.speedTest, true);
+});
+
+test('update.speedTest 可持久化关闭', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-'));
+  const cfg = loadConfig(dir);
+  cfg.update.speedTest = false;
+  saveConfig(dir, cfg);
+  const again = loadConfig(dir);
+  assert.equal(again.update.speedTest, false);
+});

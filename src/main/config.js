@@ -12,7 +12,7 @@ const DEFAULT_CONFIG = {
   api: { enabled: true, port: 17301, token: 'auto', cors: false },
   appearance: { iconSize: 64 },
   sound: { enabled: true, volume: 0.25 },
-  update: { enabled: true, proxyChannels: ['https://ghproxy.net', 'https://gh-proxy.com'] },
+  update: { enabled: true, proxyChannels: ['https://ghproxy.net', 'https://gh-proxy.com'], speedTest: true },
   market: { repo: 'NothingCooker/rimletter-official-plugins', branch: 'main' },
   log: { level: 'info' }, // 日志级别：debug | info | warn | error
   plugins: { disabled: ['example'] }, // example 为演示插件，默认禁用，可在设置中启用
