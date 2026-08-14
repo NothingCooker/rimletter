@@ -500,8 +500,9 @@ Add after `dispatch`:
 function sleep(ms, signal) {
   return new Promise(resolve => {
     if (signal && signal.aborted) { resolve(); return; }
-    const t = setTimeout(resolve, ms);
-    if (signal) signal.addEventListener('abort', () => { clearTimeout(t); resolve(); });
+    const onAbort = () => { clearTimeout(t); resolve(); };
+    const t = setTimeout(() => { if (signal) signal.removeEventListener('abort', onAbort); resolve(); }, ms);
+    if (signal) signal.addEventListener('abort', onAbort);
   });
 }
 
@@ -524,7 +525,7 @@ function runStream({ name, url, onFrame, logger, stopSignal }) {
       return '连接失败: ' + (e.message || e);
     }
     if (streamAbort.signal.aborted) {
-      try { res.body && res.body.cancel && res.body.cancel(); } catch { /* 忽略 */ }
+      try { res.body && res.body.cancel && res.body.cancel().catch(() => {}); } catch { /* 忽略 */ }
       return undefined;
     }
     if (!res.ok || !res.body) return 'HTTP ' + res.status;
@@ -552,8 +553,9 @@ function runStream({ name, url, onFrame, logger, stopSignal }) {
       if (streamAbort.signal.aborted) return undefined;
       return '流中断: ' + (e.message || e);
     } finally {
+      const r = reader;
       reader = null;
-      try { res.body.cancel && res.body.cancel(); } catch { /* 忽略 */ }
+      if (r) { try { r.cancel().catch(() => {}); } catch { /* 忽略 */ } }
     }
     return null; // 正常结束
   }
@@ -574,7 +576,7 @@ function runStream({ name, url, onFrame, logger, stopSignal }) {
 
   return function stop() {
     streamAbort.abort();
-    if (reader) { try { reader.cancel(); } catch { /* 忽略 */ } }
+    if (reader) { try { reader.cancel().catch(() => {}); } catch { /* 忽略 */ } }
     stopSignal.removeEventListener('abort', onAbort);
   };
 }
