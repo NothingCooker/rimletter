@@ -243,7 +243,7 @@ html, body {
   margin-top: -4px;
   padding-bottom: 4px;
 }
-.rw-btnresult .rw-gray { white-space: normal; word-break: break-all; max-width: 320px; }
+.rw-btnresult .rw-gray { white-space: pre-wrap; word-break: break-word; max-width: 320px; }
 
 /* 下拉/输入 */
 .rw-select, .rw-input {

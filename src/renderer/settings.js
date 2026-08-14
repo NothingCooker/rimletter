@@ -78,7 +78,7 @@ function renderGeneral() {
       '<span class="rw-gray">写入 userData/logs/rimletter.log，重启生效</span></div>' +
     '<div class="rw-row"><span class="rw-lbl">API 绑定地址</span>' +
       '<input class="rw-input" id="api-host" value="' + esc((config.api && config.api.host) || '127.0.0.1') + '" style="width:110px">' +
-      '<span class="rw-gray">局域网推送时改 0.0.0.0，重启生效</span></div>' +
+      '<span class="rw-gray">改 0.0.0.0 供局域网推送（token 明文，需可信网络），重启生效</span></div>' +
     '<div class="rw-sep"></div>' +
     '<div class="rw-row"><span class="rw-lbl">自动更新</span>' +
       '<span class="rw-cb' + (config.update.enabled ? ' on' : '') + '" data-toggle="update.enabled"></span>' +
