@@ -4,7 +4,9 @@
 
 **Goal:** A single-file RimLetter plugin (`plugin-dsh.js`) that connects to a running DeepSeek Harness web instance and slides in RimWorld-style letters for approval-waiting, error, and turn-complete events.
 
-**Architecture:** Pure sidecar — RimLetter loads the plugin, which opens two SSE long-connections to `http://{host}:{port}/api/events.mux` and `.../api/events.host` (loopback trust fence = no auth), parses `data:` frames, maps them to letters via a pure `mapFrame(cfg, frame)` function, and sends via `api.letter()`. No listener, no state file, no hook mode (unlike plugin-claude). Auto-reconnects with exponential backoff (5s→30s cap) when dsh is down.
+**Architecture:** Pure sidecar — RimLetter loads the plugin, which opens two WebSocket connections to `ws://{host}:{port}/api/events.mux` and `.../api/events.host` (loopback trust fence = no auth), parses one JSON frame per `message`, maps them to letters via a pure `mapFrame(cfg, frame)` function, and sends via `api.letter()`. No listener, no state file, no hook mode (unlike plugin-claude). Auto-reconnects with exponential backoff (5s→30s cap) when dsh is down.
+
+> **Transport note (from live verification):** the user's npm-published dsh returns **426 Upgrade Required** for SSE GET on `events.mux`/`events.host` — the event streams are **WebSocket-only** in that build. RimLetter's Electron 43 (Node ≥22) has the global `WebSocket` client, so the plugin uses WebSocket with zero dependencies. The frame envelope (`{type:'server-request',rpcId,method,payload}`) is identical whether SSE or WS, so `mapFrame` is unaffected.
 
 **Tech Stack:** Node.js CommonJS, built-in `node:http`, global `fetch` + web `ReadableStream` (Node ≥18 / Electron main), `node:test` for unit tests. Zero external dependencies.
 
@@ -26,7 +28,7 @@ D:\claudeswork\official-plugin\
 ```
 
 Responsibilities:
-- `plugin-dsh.js` — everything the plugin does. Pure functions (`summarize`, `normalizeEndpoint`, `mapFrame`, `isDoneTurnEnd`, `dispatch`) exported under `module.exports._test` for tests. `runStream` is the SSE connection loop. `module.exports` is the RimLetter plugin entry `async ({ api, logger }) => {}`.
+- `plugin-dsh.js` — everything the plugin does. Pure functions (`summarize`, `normalizeEndpoint`, `mapFrame`, `isDoneTurnEnd`, `dispatch`) exported under `module.exports._test` for tests. `runStream` is the WebSocket connection loop. `module.exports` is the RimLetter plugin entry `async ({ api, logger }) => {}`.
 - `test/dsh.test.js` — unit tests for pure functions + one integration test for `runStream` against a local `http.Server`.
 - `README.md` — user-facing install/config/troubleshooting, mirroring `plugin-claude/README.md`.
 - `plugins.json` — marketplace manifest; add one entry.
@@ -445,36 +447,56 @@ git commit -m "feat: plugin-dsh dispatch 发信分派 + 完成信防抖"
 - Modify: `D:\claudeswork\official-plugin\plugin-dsh\plugin-dsh.js` (add `sleep`, `runStream`, replace `module.exports`)
 - Modify: `D:\claudeswork\official-plugin\plugin-dsh\test\dsh.test.js` (add integration test)
 
-- [ ] **Step 1: Write the failing integration test** — append (needs `node:http`):
+- [ ] **Step 1: Write the failing integration test** — append (needs `node:http` + `node:crypto` for a minimal WS server):
 
 ```js
 const http = require('node:http');
-const { runStream } = require('../plugin-dsh.js')._test;
+const crypto = require('node:crypto');
 
-test('runStream: 读取本地 SSE 帧', async () => {
-  const frames = [];
-  let resRef = null;
-  let connected = false;
-  const server = http.createServer((req, res) => {
-    connected = true;
-    resRef = res;
-    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+// 极简 WebSocket 服务器：完成一次握手；send() 发文本帧（服务端→客户端，不掩码）
+const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+function createWsServer() {
+  return new Promise(resolve => {
+    const server = http.createServer();
+    let sockRef = null;
+    let resolveConnected;
+    const connected = new Promise(r => { resolveConnected = r; });
+    server.on('upgrade', (req, socket) => {
+      sockRef = socket;
+      const accept = crypto.createHash('sha1').update(req.headers['sec-websocket-key'] + WS_GUID).digest('base64');
+      socket.write(
+        'HTTP/1.1 101 Switching Protocols\r\n' +
+        'Upgrade: websocket\r\n' +
+        'Connection: Upgrade\r\n' +
+        'Sec-WebSocket-Accept: ' + accept + '\r\n\r\n'
+      );
+      resolveConnected();
+    });
+    const send = payload => {
+      const buf = Buffer.from(payload);
+      const header = buf.length < 126
+        ? Buffer.from([0x81, buf.length])
+        : Buffer.from([0x81, 126, (buf.length >> 8) & 0xff, buf.length & 0xff]);
+      sockRef.write(Buffer.concat([header, buf]));
+    };
+    server.listen(0, '127.0.0.1', () => resolve({ server, send, connected, port: server.address().port }));
   });
-  await new Promise(r => server.listen(0, '127.0.0.1', r));
-  const port = server.address().port;
+}
+
+test('runStream: 读取 WebSocket 帧', async () => {
+  const frames = [];
+  const { server, send, connected, port } = await createWsServer();
   const stopSignal = new AbortController();
   const stop = runStream({
     name: 'test',
-    url: 'http://127.0.0.1:' + port + '/api/events.mux',
+    url: 'ws://127.0.0.1:' + port + '/api/events.mux',
     onFrame: f => frames.push(f),
     logger: { warn: () => {}, info: () => {} },
     stopSignal: stopSignal.signal
   });
-  const deadline = Date.now() + 2000;
-  while (!connected && Date.now() < deadline) await new Promise(r => setTimeout(r, 20));
-  assert.ok(connected, '连接未建立');
-  resRef.write('data: ' + JSON.stringify({ method: 'approval/requested', payload: { toolName: 'Bash' } }) + '\n\n');
-  resRef.write('data: ' + JSON.stringify({ method: 'host/agent-error', payload: { message: 'x' } }) + '\n\n');
+  await connected;
+  send(JSON.stringify({ method: 'approval/requested', payload: { toolName: 'Bash' } }));
+  send(JSON.stringify({ method: 'host/agent-error', payload: { message: 'x' } }));
   const waitUntil = Date.now() + 2000;
   while (frames.length < 2 && Date.now() < waitUntil) await new Promise(r => setTimeout(r, 20));
   stop();
@@ -508,62 +530,49 @@ function sleep(ms, signal) {
 
 // ---------- 连接层 ----------
 
-// 单条 SSE 连接循环：连上→逐帧回调→断/错→指数退避重连；stop() 终止
-// stopSignal.abort() 会同时中止进行中的 fetch 与 sleep。
-function runStream({ name, url, onFrame, logger, stopSignal }) {
+// 单条 WebSocket 连接循环：连上→逐帧回调→断/错→指数退避重连；stop() 终止
+// stopSignal.abort() 会中止进行中的连接与 sleep。WS 可注入（默认全局 WebSocket）便于测试。
+function runStream({ name, url, onFrame, logger, stopSignal, WS }) {
+  const WSImpl = WS || global.WebSocket;
   const streamAbort = new AbortController();
-  let reader = null;
+  let ws = null;
   const onAbort = () => streamAbort.abort();
   stopSignal.addEventListener('abort', onAbort);
 
-  async function connectOnce() {
-    let res;
-    try {
-      res = await fetch(url, { signal: streamAbort.signal });
-    } catch (e) {
-      if (streamAbort.signal.aborted) return undefined;
-      return '连接失败: ' + (e.message || e);
-    }
-    if (streamAbort.signal.aborted) {
-      try { res.body && res.body.cancel && res.body.cancel().catch(() => {}); } catch { /* 忽略 */ }
-      return undefined;
-    }
-    if (!res.ok || !res.body) return 'HTTP ' + res.status;
-    reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        let idx;
-        while ((idx = buf.indexOf('\n')) >= 0) {
-          const line = buf.slice(0, idx); buf = buf.slice(idx + 1);
-          const trimmed = line.replace(/\r$/, '');
-          if (!trimmed.startsWith('data:')) continue;
-          const data = trimmed.slice(5).trim();
-          if (!data) continue;
-          let frame;
-          try { frame = JSON.parse(data); } catch (e) { logger.warn(name + ' 帧解析失败: ' + e.message); continue; }
-          try { onFrame(frame); } catch (e) { logger.warn(name + ' 处理帧出错: ' + (e.message || e)); }
-        }
-      }
-    } catch (e) {
-      if (streamAbort.signal.aborted) return undefined;
-      return '流中断: ' + (e.message || e);
-    } finally {
-      const r = reader;
-      reader = null;
-      if (r) { try { r.cancel().catch(() => {}); } catch { /* 忽略 */ } }
-    }
-    return null; // 正常结束
+  // 打开一次连接并持续接收，直到关闭/出错；resolve 错误串 / null（正常结束）/ undefined（被 stop 终止）
+  function openOnce() {
+    return new Promise(resolve => {
+      let sock;
+      try { sock = new WSImpl(url); }
+      catch (e) { resolve('连接失败: ' + (e.message || e)); return; }
+      ws = sock;
+      const finish = err => {
+        if (ws !== sock) return; // 已被新连接或 stop 取代
+        ws = null;
+        try { sock.close(); } catch { /* 忽略 */ }
+        resolve(err);
+      };
+      sock.onopen = () => {};
+      sock.onmessage = ev => {
+        let data = ev && ev.data;
+        if (data && typeof data.text === 'function') data = data.text(); // Blob 兼容
+        if (typeof data !== 'string') return;
+        let frame;
+        try { frame = JSON.parse(data); } catch (e) { logger.warn(name + ' 帧解析失败: ' + e.message); return; }
+        try { onFrame(frame); } catch (e) { logger.warn(name + ' 处理帧出错: ' + (e.message || e)); }
+      };
+      sock.onerror = () => {}; // onerror 后必有 onclose
+      sock.onclose = ev => {
+        if (streamAbort.signal.aborted) { finish(undefined); return; }
+        finish('连接结束' + (ev && typeof ev.code === 'number' ? ' code=' + ev.code : ''));
+      };
+    });
   }
 
   (async function loop() {
     let attempt = 0;
     while (!streamAbort.signal.aborted) {
-      const err = await connectOnce();
+      const err = await openOnce();
       if (streamAbort.signal.aborted) break;
       if (!err) attempt = 0; // 曾成功连上 → 重置退避
       attempt++;
@@ -576,7 +585,7 @@ function runStream({ name, url, onFrame, logger, stopSignal }) {
 
   return function stop() {
     streamAbort.abort();
-    if (reader) { try { reader.cancel().catch(() => {}); } catch { /* 忽略 */ } }
+    if (ws) { try { ws.close(); } catch { /* 忽略 */ } }
     stopSignal.removeEventListener('abort', onAbort);
   };
 }
@@ -612,7 +621,7 @@ module.exports = async ({ api, logger }) => {
     reg.stop = null;
     if (!cfgRef.current.enabled) { logger.info('插件已禁用，停止连接'); return; }
     const { host, port } = normalizeEndpoint(cfgRef.current);
-    const base = 'http://' + host + ':' + port;
+    const base = 'ws://' + host + ':' + port;
     const stopSignal = new AbortController();
     const onFrame = frame => dispatch(cfgRef.current, api, lastDoneRef, frame);
     const stopMux = runStream({ name: 'mux', url: base + '/api/events.mux', onFrame, logger, stopSignal: stopSignal.signal });
@@ -639,7 +648,7 @@ Expected: PASS (20 tests).
 
 ```bash
 git add plugin-dsh/plugin-dsh.js plugin-dsh/test/dsh.test.js
-git commit -m "feat: plugin-dsh runStream SSE 连接层 + 插件入口"
+git commit -m "feat: plugin-dsh runStream WebSocket 连接层 + 插件入口"
 ```
 
 ---
@@ -754,7 +763,7 @@ git commit -m "docs: plugin-dsh README + plugins.json 上架"
 ## Self-Review (completed by plan author)
 
 **Spec coverage:**
-- §3 decision 1 (SSE sidecar) → Task 5 (`runStream` + entry wiring). ✓
+- §3 decision 1 (WebSocket sidecar) → Task 5 (`runStream` + entry wiring). ✓
 - §3 decision 2 (event set = approval/done/error) → Task 2/3 (`mapFrame`). ✓
 - §3 decision 3 (`sound:'auto'`) → every `mapFrame` return. ✓
 - §6 connection lifecycle (5s retry / 5→30s backoff / config-change reconnect / disabled stop) → Task 5 (`runStream` loop, `restart()` on `api.on('config')`). ✓
@@ -763,7 +772,7 @@ git commit -m "docs: plugin-dsh README + plugins.json 上架"
 - §9 error handling (dsh down / disconnect / bad JSON / bad port) → Task 1 (`normalizeEndpoint`), Task 5 (`connectOnce` try/catch, frame-parse catch). ✓
 - §10 tests → Tasks 1–5; manual E2E → Task 7. ✓
 - §11 README outline → Task 6. ✓
-- §12 verification points: `fetch` + `ReadableStream` confirmed available (plugin-claude already uses global `fetch`; repo runs Node 24); `data:` line framing handled in `runStream`; mux replay of pending approvals requires no code (connection-open replay is server-side). ✓
+- §12 verification points: global `WebSocket` client confirmed available (test Node + RimLetter Electron 43 / Node ≥22); WS message JSON framing handled in `runStream`; mux replay of pending approvals requires no code (connection-open replay is server-side). ✓
 
 **Placeholder scan:** No TBD/TODO/"similar to Task N" — every code step has full source. ✓
 

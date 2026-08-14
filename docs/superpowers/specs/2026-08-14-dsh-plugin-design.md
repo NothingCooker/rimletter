@@ -14,22 +14,24 @@
 | dsh 报错 | mux `turn/end`(kind=error) + host `host/agent-error` | NegativeEvent | 「dsh 报错」 |
 | dsh 回答完成 | mux `turn/end`(kind=completed)（防抖） | PositiveEvent | 「dsh 完成回答」 |
 
-## 2. 背景与关键事实（dsh 事件流，2026-08 源码验证）
+## 2. 背景与关键事实（dsh 事件流，2026-08 源码 + 实测验证）
 
 dsh 是 DeepSeek AI 的开源 agent harness，基于 Cordis，`dsh web` 起 Web UI（默认 `http://127.0.0.1:3080`）。其 Web 前端与 host 之间的实时事件通道，对本地进程**免鉴权**开放（loopback trust fence）：
 
-- `GET /api/events.mux` — 全会话聚合 SSE 流：`session/event`（携带 turn/start、turn/end、tool/call 等原始 session 事件）、`approval/requested`/`approval/resolved`、`question/requested`、`stream/error` 等。
-- `GET /api/events.host` — host 级 SSE 流：`host/session-status`（running 翻转）、`host/agent-error`（无 turn 定位的实时失败）、`host/session-added/removed` 等。
-- 帧包络：`data: {"type":"server-request","rpcId":"<uuid>","method":"<帧类型>","payload":{...}}`，每帧一行 `data:`；打开时发一行 `: connected` 注释行。
+- **WebSocket** `/api/events.mux` — 全会话聚合事件流：`session/event`（携带 turn/start、turn/end、tool/call 等原始 session 事件）、`approval/requested`/`approval/resolved`、`question/requested`、`stream/error` 等。
+- **WebSocket** `/api/events.host` — host 级事件流：`host/session-status`（running 翻转）、`host/agent-error`（无 turn 定位的实时失败）、`host/session-added/removed` 等。
+- 帧包络：`{"type":"server-request","rpcId":"<uuid>","method":"<帧类型>","payload":{...}}`，一条 WS message 一帧；同一帧结构也经 SSE 推送（若有 SSE 端）。
 - 连接即回放各会话仍挂起的 `approval/requested` 帧（重连后可恢复「等待授权」状态）。
 - 免鉴权依据：`packages/client/connection/src/api-request-trust.ts`，Host 头为 loopback 即通过；无 Origin 也通过。默认绑定 `127.0.0.1:3080`（`dsh web` 拒绝 `--host 0.0.0.0`）。
+- **实测（2026-08-14，本机 npm 版 dsh web）**：`GET /api/events.mux|host` 返回 **426 Upgrade Required**（仅 WebSocket 可用，SSE GET 未在发布版开放）；WebSocket 握手 `101`、`session.list` RPC `ok:true`。故插件用 **WebSocket** 传输。
+- **Node ≥21 全局 `WebSocket` 客户端可用**；RimLetter 用 Electron 43（Node ≥22）满足，插件零依赖直用全局 `WebSocket`。
 - **turn/end 原因种类**：`completed` / `aborted` / `blocked` / `error`（携带 `error: LlmFailure`）/ `max-tokens` / `interrupted`。
 - **turn/end 不携带 `last_assistant_message`**（区别于 Claude Code 的 Stop 钩子），故完成信描述用固定文案，不取消息摘要。
-- dsh 的钩子桥（`dsh-hooks-claude-code`/`-codex`）**不支持** `PermissionRequest`/`StopFailure`/`Notification` 等事件，故 Claude 插件的钩子路径不适用于 dsh；SSE 事件流是 dsh 原生对外实时通道。
+- dsh 的钩子桥（`dsh-hooks-claude-code`/`-codex`）**不支持** `PermissionRequest`/`StopFailure`/`Notification` 等事件，故 Claude 插件的钩子路径不适用于 dsh；WebSocket 事件流是 dsh 原生对外实时通道。
 
 ## 3. 已确认的设计决策（用户拍板）
 
-1. **对接方式 = SSE 直连（方案 A）**：插件作为 sidecar 连 dsh 的 mux + host 两条 SSE 流，单组件、不改 dsh 配置、免鉴权。用户已确认平时以 `dsh web` 运行。
+1. **对接方式 = WebSocket 直连（方案 A）**：插件作为 sidecar 连 dsh 的 mux + host 两条 WebSocket 事件流，单组件、不改 dsh 配置、免鉴权。用户已确认平时以 `dsh web` 运行。实测 npm 版 dsh 事件流仅 WebSocket 可用（SSE GET 返回 426），故传输用 WebSocket。
 2. **事件集 = 授权信 + 完成信 + 报错信**；开始/提问信不做。
 3. **发信恒带 `sound:'auto'`**（沿用 plugin-claude 约定，各紧急度游戏原声；全局静音/音量由 RimLetter 设置控制）。
 4. **纯通知**：不做「从信里应答授权」（RimLetter 信无按钮，与 plugin-claude 一致）。
@@ -45,25 +47,25 @@ D:\claudeswork\official-plugin\plugin-dsh\
 
 独立 git 仓库（official-plugin，main 分支）提交，遵守目录约定 `plugin-<名字>/`；更新根目录 `plugins.json` 上架插件市场。
 
-## 5. 架构：SSE 直连 sidecar
+## 5. 架构：WebSocket 直连 sidecar
 
-与 plugin-claude 不同：Claude 插件「收事件」（钩子转发进监听器），dsh 插件「连事件流」（直接读 dsh 的 SSE）。因此**没有钩子模式、没有监听器、没有状态文件**——RimLetter `require()` 加载即插即用。
+与 plugin-claude 不同：Claude 插件「收事件」（钩子转发进监听器），dsh 插件「连事件流」（直接连 dsh 的 WebSocket）。因此**没有钩子模式、没有监听器、没有状态文件**——RimLetter `require()` 加载即插即用。
 
 ```
-dsh web (127.0.0.1:3080)  ──SSE──▶  plugin-dsh.js  ──api.letter()──▶  RimLetter
+dsh web (127.0.0.1:3080)  ──WebSocket──▶  plugin-dsh.js  ──api.letter()──▶  RimLetter
 ```
 
 ## 6. 连接生命周期
 
-- **首次连接**：RimLetter 加载插件后对 mux + host 各发起一次 `fetch(url, { signal })`，逐行读取 SSE `data:` 帧。失败（dsh 未运行 / 端口未开）→ 不崩溃，进入重试。
+- **首次连接**：RimLetter 加载插件后对 mux + host 各开一条 `WebSocket` 连接（`ws://{host}:{port}/api/events.mux|host`），`onmessage` 解析一帧一信。失败（dsh 未运行 / 端口未开）→ 不崩溃，进入重试。
 - **未连接重试**：每 5s 重连一次，直到连上。
-- **断开重连**：SSE 正常结束或异常（`stream/error`、网络断）→ 指数退避重连：5s → 10s → 20s → 30s 封顶，连上后重置为 5s。
+- **断开重连**：WS 正常结束或异常（`stream/error` 帧、网络断、onclose）→ 指数退避重连：5s → 10s → 20s → 30s 封顶，连上后重置为 5s。
 - **配置变更**：`api.on('config')` 时，若 host/port 变化则关闭现有连接并按新地址重连；enabled=false 则关闭连接并停止一切发信。
 - **重连后状态恢复**：mux 流打开时 dsh 会回放仍挂起的 `approval/requested` 帧，因此 dsh 侧「等待授权」在插件重连后仍能补发。
 
 ## 7. 事件映射（纯函数 `mapFrame(cfg, frame)` → `{severity,title,description,sound} | null`）
 
-帧输入为解析后的 SSE 帧对象 `{type:'server-request', method, payload}`；`cfg` 为插件配置（已合并默认值）。
+帧输入为解析后的 WS message 帧对象 `{type:'server-request', method, payload}`；`cfg` 为插件配置（已合并默认值）。
 
 | method | payload | 条件 | 信 |
 |---|---|---|---|
@@ -132,9 +134,9 @@ dsh web (127.0.0.1:3080)  ──SSE──▶  plugin-dsh.js  ──api.letter()�
 6. 故障排查（dsh 未运行自动重连 / 收不到信 / 端口被占）
 7. 支持的 RimLetter 版本：v0.2.5+
 
-## 12. 实现前需验证的技术点
+## 12. 实现前需验证的技术点（已实测）
 
-1. mux/host SSE 的 `data:` 帧解析方式（Node 20+ `fetch` 返回 body 为 ReadableStream，逐行读需按 `\n\n` 分帧或逐块 split；确认主流 Node 版本可用 `ReadableStream` + 手动 split）。
-2. Node 内置 `fetch`/`AbortSignal.timeout` 在 RimLetter 主进程（Electron，Node 20/24）可用性（plugin-claude 已用 `fetch`，确认可行）。
-3. mux 流回放挂起 `approval/requested` 的确切行为（连接打开后首帧即为回放帧，防抖/去重逻辑不受影响）。
-4. 插件内用 `require('node:fetch')` 之外的方案（直接全局 `fetch`），避免新增依赖。
+1. ✅ 本机 npm 版 dsh web：`GET /api/events.mux|host` 返回 426（仅 WebSocket），WS 握手 101、`session.list` RPC ok —— 传输确定用 WebSocket。
+2. ✅ Node 全局 `WebSocket` 客户端在测试 Node 与 RimLetter（Electron 43 / Node ≥22）可用；`onmessage` 的 `ev.data` 为字符串（JSON 帧），解析后逐帧 `onFrame`。
+3. ✅ WS 连接实测能收到帧（本机收到 `host/remote-event`），帧包络 `{type:'server-request',rpcId,method,payload}` 与设计一致，`mapFrame` 忽略无关 method。
+4. ✅ mux 流回放挂起 `approval/requested` 的行为由 dsh 侧在连接打开时推送，插件无需额外处理。
