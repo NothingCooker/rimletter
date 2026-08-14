@@ -89,4 +89,16 @@ async function loadPlugins({ pluginsDir, apiFactory, filter }) {
   return results;
 }
 
-module.exports = { loadPlugins, FIELD_TYPES, assertSchema, normalizeConfig, getPluginConfig };
+// 派发插件订阅事件（api.on(event, cb) 注册的回调，见 main.js registry.pluginConfigHandlers）。
+// handlers 结构：{ [pluginName]: { [event]: [cb, ...] } }。单个插件回调抛错不影响其它插件，
+// 与 setPluginConfig 里 config 事件的逐个 try/catch 处理一致。
+function emitPluginEvent(handlers, event, payload) {
+  if (!handlers) return;
+  for (const m of Object.values(handlers)) {
+    for (const cb of (m[event] || [])) {
+      try { cb(payload); } catch (e) { /* 单插件报错不拖垮事件总线 */ }
+    }
+  }
+}
+
+module.exports = { loadPlugins, FIELD_TYPES, assertSchema, normalizeConfig, getPluginConfig, emitPluginEvent };

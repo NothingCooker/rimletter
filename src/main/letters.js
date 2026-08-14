@@ -27,4 +27,14 @@ function formatLetter(severity, label, description, extra = {}, dismissMs = DEFA
   };
 }
 
-module.exports = { formatLetter };
+// 决定信的实际消失时长：显式 dismissMs 优先；否则恢复信取 live config.recoveryDismissMs、
+// 告警/其它信取 live config.autoDismissMs（此前 triggerLetter 恒不传 dismissMs，改配置无效）。
+// 配置字段缺失时回退模块默认（deepMerge 一般已填默认值，这里只做防呆）。
+function dismissMsFor(config, { dismissMs, recovery } = {}) {
+  if (typeof dismissMs === 'number' && isFinite(dismissMs)) return dismissMs;
+  const def = recovery ? DEFAULT_CONFIG.recoveryDismissMs : DEFAULT_CONFIG.autoDismissMs;
+  const v = recovery ? (config && config.recoveryDismissMs) : (config && config.autoDismissMs);
+  return (typeof v === 'number' && isFinite(v)) ? v : def;
+}
+
+module.exports = { formatLetter, dismissMsFor };

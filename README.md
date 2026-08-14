@@ -110,7 +110,7 @@ curl -X POST http://127.0.0.1:17301/letter \
 | `api.registerSensor(name, fn)` | 注册自定义传感器，自动出现在规则引擎下拉 |
 | `api.registerRule(rule)` | 注册规则（结构同内置规则） |
 | `api.letter({severity, title, description, sound})` | 主动触发一封播报 |
-| `api.on(event, handler)` | 订阅事件：alert / recovered / rule |
+| `api.on(event, handler)` | 订阅事件：alert / recovered |
 | `api.getState()` | 读取当前全部传感器实时值 |
 | `api.setInterval(fn, ms)` | 定时器，应用退出自动清理 |
 | `api.registerConfig({title, fields})` | 声明配置表单（text/number/bool/select/slider/button 六种字段），在 设置→插件管理→配置 内编辑 |

@@ -9,9 +9,10 @@ const { createLogger } = require('./log');
 const { createOverlayMouseGuard } = require('./overlayMouse');
 const { createSensors } = require('./sensors');
 const { createMonitor } = require('./monitor');
-const { formatLetter } = require('./letters');
+const { ensureRuleId } = require('./rules');
+const { formatLetter, dismissMsFor } = require('./letters');
 const { createApiServer } = require('./api');
-const { loadPlugins, assertSchema, normalizeConfig, getPluginConfig } = require('./plugins');
+const { loadPlugins, assertSchema, normalizeConfig, getPluginConfig, emitPluginEvent } = require('./plugins');
 const { createMarket } = require('./market');
 const { createUpdater } = require('./updater');
 const speedtest = require('./speedtest');
@@ -54,8 +55,11 @@ function getSensors() {
   return createSensors({ si, execFile: execFileAsync, extraSensors: () => registry.sensors });
 }
 
-function triggerLetter({ severity, title, description, sound }) {
-  const letter = formatLetter(severity, title, description, { sound: sound || undefined });
+function triggerLetter({ severity, title, description, sound, dismissMs, recovery }) {
+  // 消失时长按信类型取 live config：恢复信 recoveryDismissMs，其余 autoDismissMs
+  // （此前恒用 DEFAULT_CONFIG.autoDismissMs=20000，设置页滑杆改了不生效）
+  const letter = formatLetter(severity, title, description, { sound: sound || undefined },
+    dismissMsFor(config, { dismissMs, recovery }));
   if (log) log.info('发信', severity, title);
   // 性能优化：覆盖层窗口平时隐藏，有信件才显示（不抢焦点），避免全屏透明窗持续合成
   if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.showInactive();
@@ -92,8 +96,12 @@ function reloadEverything() {
     onEvent: (e) => {
       if (e.type === 'alert') {
         triggerLetter({ severity: e.alert.severity, title: e.alert.label, description: e.alert.description, sound: e.alert.sound });
+        // 插件事件总线：api.on('alert') 订阅者收到告警对象（README/设置页文档承诺的 API）
+        emitPluginEvent(registry.pluginConfigHandlers, 'alert', e.alert);
       } else if (e.type === 'recovery') {
-        triggerLetter({ severity: 'PositiveEvent', title: e.recovery.label, description: e.recovery.description });
+        triggerLetter({ severity: 'PositiveEvent', title: e.recovery.label, description: e.recovery.description, recovery: true });
+        // 插件事件总线：api.on('recovered') 订阅者收到恢复对象
+        emitPluginEvent(registry.pluginConfigHandlers, 'recovered', e.recovery);
       }
     }
   });
@@ -104,7 +112,7 @@ function makePluginApiFor(name) {
   return {
     registerSensor(sensorName, fn) { registry.sensors[sensorName] = { name: sensorName, read: fn }; },
     registerRule(r) {
-      if (!r.id) r.id = 'plugin-' + Math.random().toString(36).slice(2, 8);
+      ensureRuleId(r, 'plugin');
       const i = registry.customRules.findIndex(x => x.id === r.id);
       if (i >= 0) registry.customRules[i] = r;
       else registry.customRules.push(r);
@@ -401,7 +409,7 @@ app.whenReady().then(() => {
       onLetter: triggerLetter,
       getState: async () => { try { return await getSensors().snapshot(); } catch { return {}; } },
       getRules: getEffectiveRules,
-      addRule: (r) => { config.rules.push(r); saveConfig(configDir, config); return { ok: true }; },
+      addRule: (r) => { ensureRuleId(r, 'api'); config.rules.push(r); saveConfig(configDir, config); return { ok: true }; },
       updateRule: (id, r) => { const i = config.rules.findIndex(x => x.id === id); if (i >= 0) config.rules[i] = { ...config.rules[i], ...r }; saveConfig(configDir, config); return { ok: true }; },
       deleteRule: (id) => { config.rules = config.rules.filter(x => x.id !== id); saveConfig(configDir, config); return { ok: true }; },
       reload: () => { reloadEverything(); return { ok: true }; }

@@ -307,7 +307,7 @@ const PLUGIN_DOCS = [
   ['api.registerSensor(name, fn)', '注册自定义传感器。fn 异步返回 { value } 或 { value, unit }，会出现在规则引擎的传感器下拉里。'],
   ['api.registerRule(rule)', '注册规则，结构同内置规则：{sensor, metric, operator, threshold, durationMs, recoverPct, severity, label, description, sound, enabled}（recoverPct 为回落门槛%，默认 5，0=不设）。'],
   ['api.letter({severity, title, description, sound})', '主动触发一封播报。'],
-  ['api.on(event, handler)', '订阅事件：alert（告警）、recovered（恢复）、rule。'],
+  ['api.on(event, handler)', '订阅事件：alert（告警）、recovered（恢复）。'],
   ['api.getState()', '读取当前全部传感器实时值（Promise）。'],
   ['api.setInterval(fn, ms)', '定时器，应用退出自动清理。'],
   ['api.registerConfig({title, fields})', '声明配置表单（显示在 插件管理 → 配置）。字段类型：text / number / bool / select / slider / button。'],

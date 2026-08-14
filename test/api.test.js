@@ -120,6 +120,14 @@ test('CORS 开启：OPTIONS 预检 204，POST 响应带 ACAO 头', async () => {
   await srv.stop();
 });
 
+test('POST 请求体超过 1MB 返回 413 而非挂起', async () => {
+  const { srv, req } = await startServer();
+  const big = 'a'.repeat(1_000_001);
+  const res = await req('POST', '/letter', { severity: 'ThreatSmall', title: big });
+  assert.equal(res.status, 413);
+  await srv.stop();
+});
+
 test('start 缺省 host 绑定 127.0.0.1', async () => {
   const { srv } = await startServer();
   assert.equal(srv.host(), '127.0.0.1');

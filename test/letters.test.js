@@ -15,7 +15,7 @@ test('severityTint 返回对应染色图文件名', () => {
   assert.throws(() => severityTint('Nope'));
 });
 
-const { formatLetter } = require('../src/main/letters');
+const { formatLetter, dismissMsFor } = require('../src/main/letters');
 
 test('formatLetter 生成渲染层可用的信对象', () => {
   const L = formatLetter('ThreatBig', 'CPU 占用过高', 'CPU 已持续 85% 以上', { value: 92, threshold: 85 });
@@ -63,4 +63,18 @@ test('formatLetter 原型链键（constructor/__proto__）不误入，仍回退 
   assert.equal(L.tintFile, 'letter-NeutralEvent.png');
   const L2 = formatLetter('__proto__', 'x', 'y');
   assert.equal(L2.severity, 'NeutralEvent');
+});
+
+test('dismissMsFor 显式 dismissMs 优先，否则告警/恢复信分别取 live 配置', () => {
+  const cfg = { autoDismissMs: 20000, recoveryDismissMs: 10000 };
+  assert.equal(dismissMsFor(cfg, {}), 20000);                 // 告警信 → autoDismissMs
+  assert.equal(dismissMsFor(cfg, { recovery: true }), 10000); // 恢复信 → recoveryDismissMs
+  assert.equal(dismissMsFor(cfg, { dismissMs: 5000 }), 5000);
+  assert.equal(dismissMsFor(cfg, { dismissMs: 5000, recovery: true }), 5000);
+});
+
+test('dismissMsFor 配置缺失时回退 DEFAULT_CONFIG', () => {
+  assert.equal(dismissMsFor({}, {}), 20000);
+  assert.equal(dismissMsFor({}, { recovery: true }), 10000);
+  assert.equal(dismissMsFor(undefined, {}), 20000);
 });

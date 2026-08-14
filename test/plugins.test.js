@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { loadPlugins, normalizeConfig, getPluginConfig } = require('../src/main/plugins');
+const { loadPlugins, normalizeConfig, getPluginConfig, emitPluginEvent } = require('../src/main/plugins');
 
 function mkDir() { return fs.mkdtempSync(path.join(os.tmpdir(), 'rlp-')); }
 
@@ -83,6 +83,20 @@ test('getPluginConfig 合并默认值与存储值；无 schema 返回 null', () 
   assert.deepEqual(getPluginConfig(schema, { h: 22 }), { h: 22, b: true });
   assert.deepEqual(getPluginConfig(schema, {}), { h: 23, b: true });
   assert.equal(getPluginConfig(null, {}), null);
+});
+
+test('emitPluginEvent 触发订阅回调，单插件抛错不影响其它，未订阅事件不触发', () => {
+  const calls = [];
+  const handlers = {
+    a: { alert: [p => calls.push('a:' + p.id)] },
+    b: { alert: [() => { throw new Error('boom'); }, p => calls.push('b:' + p.id)] },
+    c: { config: [() => calls.push('c-config')] } // 非 alert 事件不应触发
+  };
+  emitPluginEvent(handlers, 'alert', { id: 1 });
+  assert.deepEqual(calls, ['a:1', 'b:1']);
+  emitPluginEvent(undefined, 'alert', {}); // 无 handlers 不崩
+  emitPluginEvent(handlers, 'config', { v: 1 }); // 走 config 通道
+  assert.deepEqual(calls, ['a:1', 'b:1', 'c-config']);
 });
 
 test('插件注册配置表单 schema 被记录', async () => {

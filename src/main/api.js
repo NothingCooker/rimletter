@@ -21,12 +21,28 @@ function createApiServer({ token, onLetter, getState, getRules, addRule, updateR
     res.end(body);
   }
 
+  const MAX_BODY = 1e6;
+
   function readBody(req) {
     return new Promise((resolve, reject) => {
       let data = '';
-      req.on('data', c => { data += c; if (data.length > 1e6) req.destroy(); });
-      req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch { reject(new Error('bad json')); } });
-      req.on('error', reject);
+      let rejected = false;
+      const fail = (err) => { if (!rejected) { rejected = true; reject(err); } };
+      req.on('data', c => {
+        if (rejected) return;
+        data += c;
+        if (data.length > MAX_BODY) {
+          // 超大请求体：pause 停止继续缓冲，reject 让 handle 返回 413。
+          // 此前直接 req.destroy() 不触发 'end' 也不触发 'error'（无 error 参数），
+          // promise 永不 settle → handle 挂起、客户端无任何响应。
+          req.pause();
+          const err = new Error('request body too large');
+          err.statusCode = 413;
+          fail(err);
+        }
+      });
+      req.on('end', () => { if (!rejected) { try { resolve(data ? JSON.parse(data) : {}); } catch { fail(new Error('bad json')); } } });
+      req.on('error', fail);
     });
   }
 
@@ -67,7 +83,7 @@ function createApiServer({ token, onLetter, getState, getRules, addRule, updateR
         json(res, 404, { error: 'not found' });
       }
     } catch (e) {
-      json(res, 400, { error: String(e.message || e) });
+      json(res, (e && e.statusCode) || 400, { error: String((e && e.message) || e) });
     }
   }
 

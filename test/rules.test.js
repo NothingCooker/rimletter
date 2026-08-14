@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { evaluateRules, neededSensors } = require('../src/main/rules');
+const { evaluateRules, neededSensors, ensureRuleId } = require('../src/main/rules');
 
 const T0 = 1_000_000;
 const mkCpuRule = (id, threshold, durationMs = 0) => ({
@@ -84,6 +84,18 @@ test('neededSensors 只收集已启用规则引用的传感器（去重、保序
 test('neededSensors 无启用规则时返回空数组', () => {
   const rules = [{ ...mkCpuRule('r1', 85, 0), enabled: false }];
   assert.deepEqual(neededSensors(rules), []);
+});
+
+test('ensureRuleId 缺失 id 时按前缀原地生成，已有 id 保持原样', () => {
+  const r1 = { sensor: 'cpu' };
+  const out1 = ensureRuleId(r1, 'api');
+  assert.strictEqual(out1, r1);            // 原地回写同一对象（重复注册仍是同 id，upsert 语义不破坏）
+  assert.ok(r1.id.startsWith('api-'));
+  const r2 = { id: 'keep', sensor: 'cpu' };
+  assert.equal(ensureRuleId(r2, 'api').id, 'keep'); // 已有 id 不被覆盖
+  const r3 = { sensor: 'cpu' };
+  ensureRuleId(r3);                        // 默认前缀
+  assert.ok(r3.id);
 });
 
 // ============ 告警/恢复频繁交替修复 ============

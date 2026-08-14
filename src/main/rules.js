@@ -127,4 +127,12 @@ function buildAlert(rule, entries) {
   return alert;
 }
 
-module.exports = { evaluateRules, compare, neededSensors, DEFAULT_RECOVER_PCT, rearmLevel, stillInBand };
+// 规则缺 id 时按前缀生成，插件/API 注册路径统一兜底——避免多个无 id 规则共用同一个
+// prevState[undefined]/nextState[undefined] 状态槽（一条告警会让所有无 id 规则同时告警）。
+// 原地回写：同一规则对象重复注册仍是同 id，不破坏 registerRule 的按 id upsert 语义。
+function ensureRuleId(rule, prefix = 'rule') {
+  if (rule && !rule.id) rule.id = (prefix || 'rule') + '-' + Math.random().toString(36).slice(2, 8);
+  return rule;
+}
+
+module.exports = { evaluateRules, compare, neededSensors, DEFAULT_RECOVER_PCT, rearmLevel, stillInBand, ensureRuleId };
