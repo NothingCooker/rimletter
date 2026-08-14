@@ -187,3 +187,67 @@ test('setFeedURL 抛错时视为该通道失败并换下一通道', async () => 
   assert.deepEqual(au.feedHistory.map(f => f.provider), ['generic', 'generic'], '抛错后仍切到 p2');
   assert.equal(seen[seen.length - 1].code, 'uptodate');
 });
+
+test('测速开启时先测速，按吞吐重排后再检查', async () => {
+  const au = mockAutoUpdater({ failFirst: 0 });
+  const seen = [];
+  let buildCalls = 0;
+  const speedTest = {
+    buildChannelProbeUrls: () => { buildCalls++; return [{ label: 'p1', manifestUrl: 'm1', installBase: 'b1' }, { label: 'github', manifestUrl: 'm2', installBase: 'b2' }]; },
+    fetchManifest: async () => ({ ok: true, path: 'x.exe' }),
+    measureThroughput: async (fetch, url) => ({ ok: true, mbps: url.startsWith('b1') ? 1 : 9 }),
+    rankChannels: (channels, byLabel) => [...channels].sort((a, b) => (byLabel[b.label].mbps || -1) - (byLabel[a.label].mbps || -1))
+  };
+  const updater = createUpdater({ autoUpdater: au, proxyChannels: ['https://p1'], publishRepo: 'o/r', speedTest, fetch: async () => {}, isSpeedTestEnabled: () => true, onStatus: s => seen.push(s) });
+  updater.init();
+  const p = updater.checkNow();
+  au.emit('update-not-available');
+  await p;
+  assert.ok(buildCalls >= 1, '应调用 buildChannelProbeUrls');
+  assert.ok(seen.some(s => s.code === 'speedtesting'), '应出现 speedtesting 状态');
+  assert.equal(au.feedHistory[0].provider, 'github', 'github 最快应最先被尝试');
+});
+
+test('测速整体失败时按原顺序继续检查', async () => {
+  const au = mockAutoUpdater({ failFirst: 0 });
+  const speedTest = {
+    buildChannelProbeUrls: () => [{ label: 'p1', manifestUrl: 'm1', installBase: 'b1' }],
+    fetchManifest: async () => ({ ok: false, error: 'HTTP 429' }),
+    measureThroughput: async () => ({ ok: false }),
+    rankChannels: (c, b) => c
+  };
+  const updater = createUpdater({ autoUpdater: au, proxyChannels: ['https://p1'], publishRepo: 'o/r', speedTest, fetch: async () => {}, isSpeedTestEnabled: () => true });
+  updater.init();
+  const p = updater.checkNow();
+  au.emit('update-not-available');
+  await p;
+  assert.deepEqual(au.feedHistory.map(f => f.provider), ['generic'], '测速失败仍按原顺序 p1 在前');
+});
+
+test('isSpeedTestEnabled false 时跳过测速', async () => {
+  const au = mockAutoUpdater({ failFirst: 0 });
+  let built = false;
+  const speedTest = {
+    buildChannelProbeUrls: () => { built = true; return []; },
+    fetchManifest: async () => ({ ok: false }),
+    measureThroughput: async () => ({ ok: false }),
+    rankChannels: c => c
+  };
+  const updater = createUpdater({ autoUpdater: au, proxyChannels: ['https://p1'], publishRepo: 'o/r', speedTest, fetch: async () => {}, isSpeedTestEnabled: () => false });
+  updater.init();
+  const p = updater.checkNow();
+  au.emit('update-not-available');
+  await p;
+  assert.equal(built, false, '关闭时不测速');
+  assert.deepEqual(au.feedHistory.map(f => f.provider), ['generic']);
+});
+
+test('未注入 speedTest 时不测速直接检查', async () => {
+  const au = mockAutoUpdater({ failFirst: 0 });
+  const updater = createUpdater({ autoUpdater: au, isSpeedTestEnabled: () => true }); // 无 speedTest/fetch
+  updater.init();
+  const p = updater.checkNow();
+  au.emit('update-not-available');
+  await p;
+  assert.deepEqual(au.feedHistory.map(f => f.provider), ['github']);
+});

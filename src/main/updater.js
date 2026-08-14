@@ -9,12 +9,17 @@ function createUpdater(deps) {
     isEnabled = () => true,
     checkDelayMs = 3000,
     proxyChannels = [],                 // 加速前缀列表，如 ['https://gh.ddlc.top']
-    publishRepo = 'NothingCooker/rimletter'
+    publishRepo = 'NothingCooker/rimletter',
+    speedTest = null,                   // 测速模块（src/main/speedtest.js）；null=禁用
+    fetch = null,                       // 测速用 fetch；null=禁用
+    arch = null,                        // process.arch，决定清单文件名
+    isSpeedTestEnabled = () => false    // live 回调，读实时 config
   } = deps;
 
   let state = { code: 'idle' };
   let downloadedInfo = null;
   let checking = false; // 当前是否有 checkForUpdates 在飞行：error 事件据此区分检查/下载阶段
+  let speedTesting = false; // 测速是否在飞行：防止 checkNow 重入
   let channels = [];    // 当前一轮尝试的通道列表
   let idx = 0;          // 当前尝试的通道下标
 
@@ -37,6 +42,50 @@ function createUpdater(deps) {
       apply: () => autoUpdater.setFeedURL({ provider: 'github', owner, repo })
     });
     return channels;
+  }
+
+  function shouldSpeedTest() {
+    return !!(speedTest && fetch && isSpeedTestEnabled());
+  }
+
+  // 对全部通道测速，返回按吞吐重排后的 channels；失败返回 null（保持原顺序）。
+  // 永不 reject —— 内部捕获一切异常并 resolve null，保证更新检查不被阻断。
+  function speedTestChannels() {
+    let probeUrls;
+    try {
+      probeUrls = speedTest.buildChannelProbeUrls({ proxyChannels, publishRepo, arch });
+    } catch (e) {
+      return Promise.resolve(null);
+    }
+    if (!probeUrls.length) return Promise.resolve(null);
+    setState({ code: 'speedtesting', current: 0, total: probeUrls.length });
+    return Promise.all(probeUrls.map(p => speedTest.fetchManifest(fetch, p.manifestUrl, 5000)))
+      .then(manifests => {
+        const ok = manifests.find(m => m && m.ok);
+        if (!ok) return null; // 清单都拉不到 → 跳过测速
+        const path = ok.path;
+        const total = probeUrls.length;
+        let current = 0;
+        const results = [];
+        // 顺序测量避免带宽争抢导致测速失真，同时自然驱动「通道 x/n」进度
+        return probeUrls.reduce((chain, p) => chain.then(() =>
+          speedTest.measureThroughput(fetch, p.installBase + '/' + path, { chunkBytes: 1024 * 1024, timeoutMs: 5000 })
+            .then(m => {
+              current++;
+              const r = { label: p.label, ...m };
+              results.push(r);
+              setState({ code: 'speedtesting', current, total, channel: p.label, mbps: m.ok ? m.mbps : undefined });
+              return r;
+            })
+        ), Promise.resolve()).then(() => results);
+      })
+      .then(results => {
+        if (!results || !results.length) return null;
+        const byLabel = {};
+        for (const r of results) byLabel[r.label] = r;
+        return speedTest.rankChannels(channels, byLabel);
+      })
+      .catch(() => null);
   }
 
   function init() {
@@ -86,10 +135,16 @@ function createUpdater(deps) {
 
   function checkNow() {
     if (!isEnabled()) { setState({ code: 'disabled' }); return Promise.resolve(null); }
-    if (checking) return Promise.resolve(null);
+    if (checking || speedTesting) return Promise.resolve(null);
     channels = buildChannels();
     idx = 0;
-    return attempt();
+    if (!shouldSpeedTest()) return attempt();
+    speedTesting = true;
+    return speedTestChannels().then(reordered => {
+      speedTesting = false;
+      if (reordered && reordered.length) channels = reordered;
+      return attempt();
+    });
   }
 
   function scheduleInitialCheck() {
