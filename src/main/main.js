@@ -14,6 +14,7 @@ const { createApiServer } = require('./api');
 const { loadPlugins, assertSchema, normalizeConfig, getPluginConfig } = require('./plugins');
 const { createMarket } = require('./market');
 const { createUpdater } = require('./updater');
+const speedtest = require('./speedtest');
 const { buildAutostartOptions } = require('./autostart');
 const { autoUpdater } = require('electron-updater');
 
@@ -139,8 +140,12 @@ function initUpdater() {
   updater = createUpdater({
     autoUpdater,
     isEnabled: () => !!(config.update && config.update.enabled),
+    isSpeedTestEnabled: () => !!(config.update && config.update.speedTest),
     proxyChannels: (config.update && config.update.proxyChannels) || [],
     publishRepo: 'NothingCooker/rimletter',
+    fetch: globalThis.fetch,
+    arch: process.arch,
+    speedTest: speedtest,
     onStatus: (st) => { if (log) log.info('更新状态', st.code, st.version || '', st.channel || '', st.error || ''); sendToSettings('update:status', st); },
     onDownloaded: () => triggerLetter({
       severity: 'NeutralEvent',
