@@ -24,8 +24,8 @@ const DEFAULT_CONFIG = {
   plugins: { disabled: ['example'] }, // example 为演示插件，默认禁用，可在设置中启用
   rules: [
     { id: 'builtin-cpu', sensor: 'cpu', metric: 'load', operator: '>', threshold: 85, durationMs: 5000, severity: 'ThreatBig', label: 'CPU 占用过高', description: 'CPU 已持续 85% 以上超过 5 秒', sound: 'auto', enabled: true, recoverPct: 5 },
-    { id: 'builtin-gpu-temp', sensor: 'gpu', metric: 'temp', operator: '>', threshold: 85, durationMs: 5000, severity: 'ThreatSmall', label: '显卡过热', description: 'GPU 温度已持续 85°C 以上', sound: 'auto', enabled: true, recoverPct: 5 },
-    { id: 'builtin-gpu-load', sensor: 'gpu', metric: 'load', operator: '>', threshold: 95, durationMs: 5000, severity: 'ThreatSmall', label: '显卡满载', description: 'GPU 占用已持续 95% 以上', sound: 'auto', enabled: true, recoverPct: 5 },
+    { id: 'builtin-gpu-temp', sensor: 'nvidia-gpu', metric: 'temp', operator: '>', threshold: 85, durationMs: 5000, severity: 'ThreatSmall', label: '显卡过热', description: 'NVIDIA GPU 温度已持续 85°C 以上', sound: 'auto', enabled: true, recoverPct: 5 },
+    { id: 'builtin-gpu-load', sensor: 'nvidia-gpu', metric: 'load', operator: '>', threshold: 95, durationMs: 5000, severity: 'ThreatSmall', label: '显卡满载', description: 'NVIDIA GPU 占用已持续 95% 以上', sound: 'auto', enabled: true, recoverPct: 5 },
     { id: 'builtin-mem', sensor: 'mem', metric: 'usedPct', operator: '>', threshold: 90, durationMs: 10000, severity: 'NegativeEvent', label: '内存吃紧', description: '内存占用率已持续 10 秒高于 90%', sound: 'auto', enabled: true, recoverPct: 5 },
     { id: 'builtin-disk', sensor: 'disk', metric: 'freeGB', operator: '<', threshold: 10, durationMs: 0, severity: 'NeutralEvent', label: '磁盘空间不足', description: '磁盘剩余空间不足 10GB', sound: 'auto', enabled: true, recoverPct: 5 }
   ]
@@ -50,6 +50,16 @@ function migrateConfig(cfg) {
     pos.side = pos.anchor.indexOf('bottom') === 0 ? 'bottom' : 'top';
     delete pos.anchor;
     changed = true;
+  }
+  // 内置 GPU 传感器改名 nvidia-gpu（v0.6.2）：老配置/API 规则里 sensor:'gpu' 自动迁移，
+  // 避免指向不存在的传感器名；'gpu' 兼容别名仍保留，迁移只是让语义明确。
+  if (Array.isArray(cfg && cfg.rules)) {
+    for (const r of cfg.rules) {
+      if (r && r.sensor === 'gpu') {
+        r.sensor = 'nvidia-gpu';
+        changed = true;
+      }
+    }
   }
   return changed;
 }

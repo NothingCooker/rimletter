@@ -31,6 +31,7 @@
   - NeutralEvent 中性 - 灰蓝
   - PositiveEvent 正面（恢复正常）- 蓝
 - 可扩展规则引擎：传感器 + 指标 + 比较符 + 阈值 + 持续时长 + 紧急度，含去重与恢复播报
+- GPU 温度/占用（传感器 GPU（NVIDIA））：NVIDIA 直读（nvidia-smi）；AMD 显卡装官方插件 amd-gpu-stats（LibreHardwareMonitor 数据源，插件市场可装）
 - 本地 HTTP API：任何程序可触发播报、读写规则（token 鉴权）
 - 插件系统：手写 JS，注册自定义传感器 / 规则 / 主动播报
 - 游戏原声音效（提取自游戏 FMOD 音频）

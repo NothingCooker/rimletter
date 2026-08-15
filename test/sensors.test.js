@@ -60,15 +60,24 @@ test('gpu nvidia-smi 输出多行时只取第一块 GPU', async () => {
   assert.equal(out.temp, 61);
 });
 
-test('gpu nvidia-smi 不可用（非 NVIDIA）时不回退 si.graphics，返回无数据', async () => {
+test('gpu nvidia-smi 不可用且未配置 lhmPort 时返回无数据（不回退 si.graphics）', async () => {
   const execFile = async () => { throw new Error('ENOENT: nvidia-smi'); };
   let graphicsCalled = false;
   const si = { graphics: async () => { graphicsCalled = true; return { controllers: [] }; } };
-  const sensors = createSensors({ si, execFile });
+  const sensors = createSensors({ si, execFile }); // 无 lhmPort → LHM 回退关闭
   const out = await sensors.gpu.read();
   assert.equal(out.temp, undefined);
   assert.equal(out.load, undefined);
   assert.equal(graphicsCalled, false, '不应调用 si.graphics（避免每 2s spawn 7 个 powershell）');
+});
+
+test('snapshot 注册 nvidia-gpu 传感器（主名）与 gpu 兼容别名', async () => {
+  const execFile = async () => ({ stdout: '7, 55\r\n', stderr: '' });
+  const sensors = createSensors({ si: {}, execFile });
+  const snap = await sensors.snapshot(['nvidia-gpu', 'gpu']);
+  assert.equal(snap['nvidia-gpu'].temp, 55);
+  assert.equal(snap['nvidia-gpu'].load, 7);
+  assert.equal(snap.gpu.temp, 55); // 别名同实现
 });
 
 test('sensors 提供 snapshot 接口，返回全部传感器值', async () => {

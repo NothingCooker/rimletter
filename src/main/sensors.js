@@ -51,12 +51,13 @@ function createSensors({ si, execFile, extraSensors, fs = nodeFs, listDrives } =
       return out;
     }
   };
+  // NVIDIA GPU（注册名 nvidia-gpu，兼容别名 gpu）：
+  // 异步 nvidia-smi 直查（不阻塞事件循环）。非 NVIDIA → 无 GPU 数据。
+  // 不回退 si.graphics()：它在 Windows 上每次 spawn 7 个 powershell（Get-CimInstance
+  // win32_VideoController/desktopmonitor/WmiMonitor 等），无独显机每 2s 轮询一轮 → 子进程
+  // 堆积 + 高 CPU（v0.4.1 修复）。AMD/Intel 显卡请用官方插件 amd-gpu-stats（LibreHardwareMonitor）。
   const gpu = {
-    name: 'GPU',
-    // 仅 NVIDIA：异步 nvidia-smi 直查（不阻塞事件循环）。非 NVIDIA → 无 GPU 数据。
-    // 不回退 si.graphics()：它在 Windows 上每次 spawn 7 个 powershell（Get-CimInstance
-    // win32_VideoController/desktopmonitor/WmiMonitor 等），无独显机每 2s 轮询一轮 → 子进程
-    // 堆积 + 高 CPU（v0.4.1 修复）。GPU 温度/占用仅支持 NVIDIA（设置页已注明）。
+    name: 'GPU（NVIDIA）',
     async read() {
       if (execFile) {
         try {
@@ -81,7 +82,8 @@ function createSensors({ si, execFile, extraSensors, fs = nodeFs, listDrives } =
   // 派发表：内置 + 插件（extraSensors 返回 {name → {read}}）。
   // v0.3.1 修复：插件 registerSensor 的传感器此前进不了 snapshot 的 map → 规则永不触发。
   function buildMap() {
-    const map = { cpu: () => cpu.read(), mem: () => mem.read(), disk: () => disk.read(), gpu: () => gpu.read() };
+    // nvidia-gpu 为主注册名；gpu 保留为兼容别名（旧规则/API 引用不失效）
+    const map = { cpu: () => cpu.read(), mem: () => mem.read(), disk: () => disk.read(), gpu: () => gpu.read(), 'nvidia-gpu': () => gpu.read() };
     if (typeof extraSensors === 'function') {
       for (const [name, s] of Object.entries(extraSensors())) {
         if (s && typeof s.read === 'function') map[name] = () => s.read();

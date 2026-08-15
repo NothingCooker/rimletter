@@ -109,6 +109,22 @@ test('旧配置无 appearance.position/letterGap 时自动补默认且不覆盖�
   assert.equal(cfg.appearance.letterGap, 30);
 });
 
+test('旧规则 sensor:gpu 自动迁移为 nvidia-gpu（内置传感器改名）', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-'));
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ rules: [
+    { id: 'a', sensor: 'gpu', metric: 'temp', enabled: true },
+    { id: 'b', sensor: 'cpu', metric: 'load', enabled: true }
+  ] }));
+  const cfg = loadConfig(dir);
+  assert.equal(cfg.rules.find(x => x.id === 'a').sensor, 'nvidia-gpu');
+  assert.equal(cfg.rules.find(x => x.id === 'b').sensor, 'cpu');
+  const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf-8'));
+  assert.equal(onDisk.rules.find(x => x.id === 'a').sensor, 'nvidia-gpu');
+  // 新默认内置规则直接就是 nvidia-gpu
+  assert.equal(DEFAULT_CONFIG.rules.find(r => r.id === 'builtin-gpu-temp').sensor, 'nvidia-gpu');
+  assert.equal(DEFAULT_CONFIG.rules.find(r => r.id === 'builtin-gpu-load').sensor, 'nvidia-gpu');
+});
+
 test('旧版 position.anchor 四角落自动迁移为 side（上方/下方）并删除 anchor', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-'));
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ appearance: { position: { anchor: 'bottom-right', offsetX: 40, offsetY: 30 } } }));

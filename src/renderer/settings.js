@@ -13,7 +13,7 @@ const SENSOR_METRICS = {
   cpu:  [{ k: 'load',    label: '占用率 %' }],
   mem:  [{ k: 'usedPct', label: '占用率 %' }],
   disk: [{ k: 'freeGB',  label: '剩余空间 GB' }],
-  gpu:  [{ k: 'temp',    label: '温度 °C' }, { k: 'load', label: '占用率 %' }]
+  'nvidia-gpu': [{ k: 'temp', label: '温度 °C' }, { k: 'load', label: '占用率 %' }]
 };
 let pluginSensorMetrics = {}; // { sensorName: [{k,label}] } 从最新传感器快照推断（内置之外的新键）
 const OPERATORS = ['>', '>=', '<', '<='];
@@ -96,6 +96,7 @@ function renderGeneral() {
     '<div class="rw-row"><span class="rw-lbl">API 绑定地址</span>' +
       '<input class="rw-input" id="api-host" value="' + esc((config.api && config.api.host) || '127.0.0.1') + '" style="flex:1;min-width:140px">' +
       '<span class="rw-gray">改 0.0.0.0 供局域网推送（token 明文，需可信网络），重启生效</span></div>' +
+
     '<div class="rw-sep"></div>' +
     '<div class="rw-row"><span class="rw-lbl">自动更新</span>' +
       '<span class="rw-cb' + (config.update.enabled ? ' on' : '') + '" data-toggle="update.enabled"></span>' +
@@ -222,7 +223,7 @@ function renderRules() {
   el.innerHTML = rows +
     '<div style="margin-top:10px"><button class="rw-btn" id="add-rule">＋ 添加规则</button></div>' +
     '<div id="rule-editor" class="rw-editor" style="display:none"></div>' +
-    '<div style="margin-top:10px;font-size:11px;color:#7f8a96">提示：GPU 温度/占用监控仅支持 NVIDIA 显卡（通过 nvidia-smi 读取）。</div>';
+    '<div style="margin-top:10px;font-size:11px;color:#7f8a96">提示：GPU 温度/占用（传感器 GPU（NVIDIA））仅支持 NVIDIA 显卡（通过 nvidia-smi 读取）；AMD 显卡请安装官方插件 amd-gpu-stats（插件市场 → 安装，需运行 LibreHardwareMonitor）。</div>';
 
   el.querySelectorAll('[data-enable]').forEach(cb => cb.addEventListener('click', () => {
     const r = config.rules.find(x => x.id === cb.dataset.id);
@@ -262,8 +263,8 @@ function renderRuleEditor(r) {
       '<span class="rw-lbl">指标</span><select class="rw-select" id="ed-metric">' + metricOpts + '</select>' +
       '<span class="rw-lbl">比较</span><select class="rw-select" id="ed-op">' + opOpts + '</select>' +
       '<input class="rw-input" id="ed-threshold" value="' + r.threshold + '" style="width:60px"></div>' +
-    '<div class="rw-row" id="ed-gpu-hint" style="' + (r.sensor === 'gpu' ? '' : 'display:none') + ';font-size:11px;color:#c8a06a">' +
-      '<span class="rw-lbl" style="width:auto">⚠ GPU 温度/占用仅支持 NVIDIA 显卡</span></div>' +
+    '<div class="rw-row" id="ed-gpu-hint" style="' + (r.sensor === 'gpu' || r.sensor === 'nvidia-gpu' ? '' : 'display:none') + ';font-size:11px;color:#c8a06a">' +
+      '<span class="rw-lbl" style="width:auto">⚠ GPU 温度/占用仅支持 NVIDIA 显卡；AMD 显卡请用插件市场安装 amd-gpu-stats</span></div>' +
     '<div class="rw-row"><span class="rw-lbl">持续时长</span><input class="rw-input" id="ed-duration" value="' + (r.durationMs / 1000) + '" style="width:50px">' +
       '<span class="rw-gray">秒（0=立即，防瞬时尖峰误报）</span></div>' +
     '<div class="rw-row"><span class="rw-lbl">回落门槛</span><input class="rw-input" id="ed-recover-pct" value="' + (r.recoverPct != null ? r.recoverPct : 5) + '" style="width:50px">' +
@@ -336,7 +337,7 @@ function defaultRule() {
   return { id: '', sensor: 'cpu', metric: 'load', operator: '>', threshold: 85, durationMs: 5000, recoverPct: 5, severity: 'NegativeEvent', label: '新规则', description: '', sound: 'auto', enabled: true };
 }
 function val(id) { return document.getElementById(id).value; }
-function sensorLabel(s) { return { cpu: 'CPU', mem: '内存', disk: '磁盘', gpu: 'GPU' }[s] || s; }
+function sensorLabel(s) { return { cpu: 'CPU', mem: '内存', disk: '磁盘', gpu: 'GPU', 'nvidia-gpu': 'GPU（NVIDIA）' }[s] || s; }
 function metricLabel(r) { const m = (SENSOR_METRICS[r.sensor] || []).find(x => x.k === r.metric); return m ? m.label : r.metric; }
 
 // ============ 插件管理 ============
