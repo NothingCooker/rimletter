@@ -123,14 +123,14 @@ test('旧版 position.anchor 四角落自动迁移为 side（上方/下方）并
   assert.equal(loadConfig(dir2).appearance.position.side, 'top');
 });
 
-test('appearance.position/letterGap 可持久化覆盖', () => {
+test('appearance.position/letterGap 可持久化覆盖（含四方向 side）', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-'));
   const cfg = loadConfig(dir);
-  cfg.appearance.position = { side: 'bottom', offsetX: 40, offsetY: 30 };
+  cfg.appearance.position = { side: 'left', offsetX: 40, offsetY: 30 };
   cfg.appearance.letterGap = 60;
   saveConfig(dir, cfg);
   const again = loadConfig(dir);
-  assert.deepEqual(again.appearance.position, { side: 'bottom', offsetX: 40, offsetY: 30 });
+  assert.deepEqual(again.appearance.position, { side: 'left', offsetX: 40, offsetY: 30 });
   assert.equal(again.appearance.letterGap, 60);
 });
 

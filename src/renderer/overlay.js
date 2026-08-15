@@ -50,19 +50,21 @@ function applyIconSize(px) {
 }
 
 // 信堆栈位置由 config.appearance.position 驱动：堆栈固定在屏幕右侧，
-// offsetX/offsetY 为距右缘 / 上缘的边距（px）。side（top/bottom）决定新信插到堆栈上方还是下方，
-// 见 spawnLetter。inline 覆盖 ui.css 里的默认右上角。
+// offsetX/offsetY 为距右缘 / 上缘的边距（px）。side 决定新信出现在已有信的哪个方向：
+// top/bottom → 堆栈垂直排列（column），left/right → 堆栈水平排列（row），见 spawnLetter。
+// inline 覆盖 ui.css 里的默认右上角。
 function applyPosition(pos) {
   pos = pos || {};
-  const ox = Math.max(0, Math.min(2000, Number(pos.offsetX) || 0));
-  const oy = Math.max(0, Math.min(2000, Number(pos.offsetY) || 0));
+  const side = String((pos && pos.side) || 'bottom');
+  const ox = Math.max(0, Math.min(4000, Number(pos.offsetX) || 0));
+  const oy = Math.max(0, Math.min(4000, Number(pos.offsetY) || 0));
   const s = stack.style;
   s.top = oy + 'px';
-  s.right = ox + 'px';
   s.bottom = '';
   s.left = '';
-  s.flexDirection = 'column';
-  s.alignItems = 'flex-end';
+  s.right = ox + 'px';
+  s.flexDirection = (side === 'left' || side === 'right') ? 'row' : 'column';
+  s.alignItems = (side === 'left' || side === 'right') ? 'center' : 'flex-end';
 }
 
 // 信间距由 config.appearance.letterGap 驱动（px）
@@ -81,8 +83,10 @@ function playSound(name) {
 
 function spawnLetter(L) {
   startHoverCheck(); // 有信件才跑悬停检测
-  // 新信弹出位置：side = top 插到堆栈上方（最新信在最上面），bottom 追加到堆栈下方（原版）
-  const atTop = !!(config.appearance && config.appearance.position && config.appearance.position.side === 'top');
+  // 新信弹出位置：side 决定新信出现在已有信的哪个方向。
+  // top/left → 插到堆栈头（上方/左侧），bottom/right → 追加到堆栈尾（下方/右侧，原版）
+  const side = String((config.appearance && config.appearance.position && config.appearance.position.side) || 'bottom');
+  const atHead = side === 'top' || side === 'left';
   const el = document.createElement('div');
   el.className = 'letter' + (L.bounce ? ' bounce' : '');
   el.innerHTML =
@@ -90,31 +94,31 @@ function spawnLetter(L) {
     '<img class="icon" src="../../assets/letter/' + L.tintFile + '" draggable="false">' +
     '<div class="label"><div class="bg"></div><span>' + escapeHtml(L.label) + '</span></div>' +
     '</div>';
-  if (atTop) {
-    // 新信插到顶部，旧信被顶下——FLIP：记录旧位置 → 插入 → 过渡回原位
-    const before = [...stack.children].map(l => [l, l.getBoundingClientRect().top]);
-    stack.insertBefore(el, stack.firstChild);
-    // Invert + Play：先固定回旧位置（视觉不动），再过渡回原位 = 旧信平滑下移补位
-    requestAnimationFrame(() => {
-      before.forEach(([l, top]) => {
-        const d = top - l.getBoundingClientRect().top;
-        if (!d) return;
-        l.style.transition = 'none';
-        l.style.transform = 'translateY(' + d + 'px)';
-        void l.offsetHeight; // 强制重排，让初始 transform 生效
-        l.style.transition = 'transform .4s cubic-bezier(.2,.8,.3,1.15)';
-        l.style.transform = 'translateY(0)';
-        l.addEventListener('transitionend', function done(e) {
-          if (e.propertyName !== 'transform') return;
-          l.style.transition = '';
-          l.style.transform = '';
-          l.removeEventListener('transitionend', done);
-        });
+  // FLIP：记录旧信位置（水平/垂直都可能位移，取 left+top）→ 插入 → 过渡回原位
+  const before = [...stack.children].map(l => {
+    const r = l.getBoundingClientRect();
+    return [l, r.left, r.top];
+  });
+  if (atHead) stack.insertBefore(el, stack.firstChild);
+  else stack.appendChild(el);
+  requestAnimationFrame(() => {
+    before.forEach(([l, lx, ly]) => {
+      const r = l.getBoundingClientRect();
+      const dx = lx - r.left, dy = ly - r.top;
+      if (!dx && !dy) return;
+      l.style.transition = 'none';
+      l.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      void l.offsetHeight; // 强制重排，让初始 transform 生效
+      l.style.transition = 'transform .4s cubic-bezier(.2,.8,.3,1.15)';
+      l.style.transform = 'translate(0,0)';
+      l.addEventListener('transitionend', function done(e) {
+        if (e.propertyName !== 'transform') return;
+        l.style.transition = '';
+        l.style.transform = '';
+        l.removeEventListener('transitionend', done);
       });
     });
-  } else {
-    stack.appendChild(el);
-  }
+  });
 
   // 到达闪光 + 音效
   spawnFlash(L, el, L.flashColor, 0.55, 0.7);
@@ -144,9 +148,9 @@ function spawnLetter(L) {
   // 自动消失
   setTimeout(() => { if (el.parentNode) dismiss(el, intervalId); }, L.dismissMs || 20000);
 
-  // 超出 6 封折叠为聚合提示（移除最老的一封：bottom 模式最老在顶部，top 模式最老在底部）
+  // 超出 6 封折叠为聚合提示（移除最老的一封：新信插头部时最老在尾部，反之最老在头部）
   while (stack.children.length > 6) {
-    const oldest = atTop ? stack.lastChild : stack.firstChild;
+    const oldest = atHead ? stack.lastChild : stack.firstChild;
     if (oldest === el) break;
     // 直接摘除不走 dismiss（无动画/音效），但要安全处理悬停态：
     // 否则光标停在被摘掉的信上时 mouseleave 永不触发 → 整屏锁死
@@ -175,9 +179,12 @@ function dismiss(el, intervalId) {
   setHovered(el, false); // 只复位「这一封」信的悬停态，别误动另一封被悬停的信
   tooltip.classList.add('hidden');
 
-  // FLIP：记录其余信当前纵向位置
+  // FLIP：记录其余信当前位置（垂直/水平堆叠都可能位移，取 left+top）
   const siblings = [...stack.children].filter(x => x !== el);
-  const from = new Map(siblings.map(l => [l, l.getBoundingClientRect().top]));
+  const from = new Map(siblings.map(l => {
+    const r = l.getBoundingClientRect();
+    return [l, [r.left, r.top]];
+  }));
 
   // 被点掉的信立即移出布局（让缺口马上合拢），用 fixed ghost 在原位淡出
   const rect = el.getBoundingClientRect();
@@ -204,16 +211,18 @@ function dismiss(el, intervalId) {
 
   // Invert：把其余信固定回旧位置（视觉不动）
   siblings.forEach(l => {
-    const d = from.get(l) - l.getBoundingClientRect().top;
-    if (d !== 0) l.style.transform = 'translateY(' + d + 'px)';
+    const [lx, ly] = from.get(l);
+    const r = l.getBoundingClientRect();
+    const dx = lx - r.left, dy = ly - r.top;
+    if (dx !== 0 || dy !== 0) l.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
   });
 
-  // Play：非线性过渡回原位 = 上移补位
+  // Play：非线性过渡回原位 = 补位（垂直堆叠上移，水平堆叠横移）
   requestAnimationFrame(() => requestAnimationFrame(() => {
     siblings.forEach(l => {
       if (!l.style.transform) return;
       l.style.transition = 'transform .5s cubic-bezier(.2,.8,.3,1.15)';
-      l.style.transform = 'translateY(0)';
+      l.style.transform = 'translate(0,0)';
       l.addEventListener('transitionend', function done(e) {
         if (e.propertyName !== 'transform') return;
         l.style.transition = '';

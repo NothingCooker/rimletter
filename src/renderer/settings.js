@@ -47,7 +47,9 @@ init();
 // ============ 常规设置 ============
 const LETTER_SIDES = [
   ['top', '上方'],
-  ['bottom', '下方']
+  ['bottom', '下方'],
+  ['left', '左侧'],
+  ['right', '右侧']
 ];
 function renderGeneral() {
   const el = document.getElementById('pane-general');
@@ -68,9 +70,9 @@ function renderGeneral() {
     '<div class="rw-row"><span class="rw-lbl">信弹出位置</span>' +
       '<select class="rw-select" id="letter-side">' + LETTER_SIDES.map(a =>
         '<option value="' + a[0] + '"' + (a[0] === curSide ? ' selected' : '') + '>' + a[1] + '</option>').join('') + '</select>' +
-      '<span class="rw-gray">新信出现在已有信的上方或下方</span></div>' +
-    posSliderRow('横向边距', 'appearance.position.offsetX', pos.offsetX, 0, 1000, 2, 'px') +
-    posSliderRow('纵向边距', 'appearance.position.offsetY', pos.offsetY, 0, 1000, 2, 'px') +
+      '<span class="rw-gray">新信出现在已有信的上方/下方/左侧/右侧</span></div>' +
+    posSliderRow('横向边距', 'appearance.position.offsetX', pos.offsetX, 0, 2000, 2, 'px') +
+    posSliderRow('纵向边距', 'appearance.position.offsetY', pos.offsetY, 0, 2000, 2, 'px') +
     posSliderRow('信间距', 'appearance.letterGap', curGap, 0, 100, 2, 'px') +
     '<div class="rw-row"><span class="rw-lbl">开机自启</span>' +
       '<span class="rw-cb" id="autostart-cb"></span>' +
@@ -92,7 +94,7 @@ function renderGeneral() {
         '<option' + (curLogLevel === l ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
       '<span class="rw-gray">写入 userData/logs/rimletter.log，重启生效</span></div>' +
     '<div class="rw-row"><span class="rw-lbl">API 绑定地址</span>' +
-      '<input class="rw-input" id="api-host" value="' + esc((config.api && config.api.host) || '127.0.0.1') + '" style="width:110px">' +
+      '<input class="rw-input" id="api-host" value="' + esc((config.api && config.api.host) || '127.0.0.1') + '" style="flex:1;min-width:140px">' +
       '<span class="rw-gray">改 0.0.0.0 供局域网推送（token 明文，需可信网络），重启生效</span></div>' +
     '<div class="rw-sep"></div>' +
     '<div class="rw-row"><span class="rw-lbl">自动更新</span>' +
@@ -107,7 +109,7 @@ function renderGeneral() {
       '<button class="rw-btn" id="update-install-btn" style="display:none">立即重启安装</button></div>';
   bindSliders(el);
 
-  // 信弹出位置：新信在堆栈上方/下方（实时生效，覆盖层 onConfigChange 立即重排）
+  // 信弹出位置：新信在已有信的上方/下方/左侧/右侧（实时生效，覆盖层 onConfigChange 立即重排）
   const sideEl = document.getElementById('letter-side');
   if (sideEl) sideEl.addEventListener('change', () => {
     config.appearance = config.appearance || {};
@@ -267,9 +269,9 @@ function renderRuleEditor(r) {
     '<div class="rw-row"><span class="rw-lbl">回落门槛</span><input class="rw-input" id="ed-recover-pct" value="' + (r.recoverPct != null ? r.recoverPct : 5) + '" style="width:50px">' +
       '<span class="rw-gray">%（告警后数值需降到阈值以下此比例才允许再次告警/发恢复信，防频繁交替）</span></div>' +
     '<div class="rw-row"><span class="rw-lbl">紧急度</span><select class="rw-select" id="ed-sev">' + sevOpts + '</select></div>' +
-    '<div class="rw-row"><span class="rw-lbl">标题</span><input class="rw-input" id="ed-label" value="' + esc(r.label) + '" style="width:220px"></div>' +
-    '<div class="rw-row"><span class="rw-lbl">描述</span><input class="rw-input" id="ed-desc" value="' + esc(r.description || '') + '" style="width:220px"></div>' +
-    '<div class="rw-row"><span class="rw-lbl">音效</span><input class="rw-input" id="ed-sound" value="' + esc(r.sound || 'auto') + '" style="width:220px"><span class="rw-gray">auto=游戏原声</span></div>' +
+    '<div class="rw-row"><span class="rw-lbl">标题</span><input class="rw-input" id="ed-label" value="' + esc(r.label) + '" style="flex:1;min-width:180px"></div>' +
+    '<div class="rw-row"><span class="rw-lbl">描述</span><input class="rw-input" id="ed-desc" value="' + esc(r.description || '') + '" style="flex:1;min-width:180px"></div>' +
+    '<div class="rw-row"><span class="rw-lbl">音效</span><input class="rw-input" id="ed-sound" value="' + esc(r.sound || 'auto') + '" style="flex:1;min-width:140px"><span class="rw-gray">auto=游戏原声</span></div>' +
     '<div class="rw-row" style="margin-top:10px;gap:10px">' +
     '<button class="rw-btn" id="ed-save">保存</button>' +
     '<button class="rw-btn" id="ed-cancel">取消</button></div>';
@@ -532,8 +534,9 @@ function renderPluginConfigForm(plugin) {
         f.options.map(o => '<option value="' + esc(o.value) + '"' + (o.value === cur ? ' selected' : '') + '>' + esc(o.label) + '</option>').join('') +
         '</select></div>';
     } else if (f.type === 'text') {
+      // 文本字段占满整行剩余宽度（如 HA 插件的 URL 等长文本，原 56px 固定宽根本看不清）
       html += '<div class="rw-row"><span class="rw-lbl">' + esc(f.label) + '</span>' +
-        '<input class="rw-input" data-i="' + i + '" data-role="text" value="' + esc(cur) + '"' + (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '') + '></div>';
+        '<input class="rw-input" data-i="' + i + '" data-role="text" value="' + esc(cur) + '" style="flex:1;min-width:200px"' + (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '') + '></div>';
     } else if (f.type === 'number') {
       html += '<div class="rw-row"><span class="rw-lbl">' + esc(f.label) + '</span>' +
         '<input class="rw-input" data-i="' + i + '" data-role="number" value="' + esc(cur) + '" style="width:80px"' +

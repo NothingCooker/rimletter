@@ -12,8 +12,8 @@ const DEFAULT_CONFIG = {
   api: { enabled: true, port: 17301, token: 'auto', host: '127.0.0.1', cors: false },
   // settings.alwaysOnTop：设置窗是否置顶（关闭后像普通窗口一样可被遮挡；覆盖层仍置顶不受影响）
   settings: { alwaysOnTop: true },
-  // appearance.position：新信弹出位置。side 为上方（top）/ 下方（bottom），
-  // 指新信出现在已有信堆栈的上方还是下方（bottom = 原版：最新信在堆栈最下方）；
+  // appearance.position：新信弹出位置。side 为新信出现在已有信堆栈的哪个方向：
+  // top 上方 / bottom 下方（堆栈垂直排列，bottom = 原版）/ left 左侧 / right 右侧（堆栈水平排列）；
   // offsetX/offsetY 为堆栈距右缘 / 上缘的边距（px）。letterGap 为信间距（px）。
   // 默认值与原版一致：右上角、右 26 上 64、间距 30、新信在下方。
   appearance: { iconSize: 64, position: { side: 'bottom', offsetX: 26, offsetY: 64 }, letterGap: 30 },
