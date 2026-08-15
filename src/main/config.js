@@ -10,6 +10,8 @@ const DEFAULT_CONFIG = {
   recoveryDismissMs: 10000,
   recoveryNotifications: true, // 是否播报「已恢复正常」信（关闭后告警状态仍正常复位，只是不再广播恢复信）
   api: { enabled: true, port: 17301, token: 'auto', host: '127.0.0.1', cors: false },
+  // settings.alwaysOnTop：设置窗是否置顶（关闭后像普通窗口一样可被遮挡；覆盖层仍置顶不受影响）
+  settings: { alwaysOnTop: true },
   // appearance.position：新信弹出位置。side 为上方（top）/ 下方（bottom），
   // 指新信出现在已有信堆栈的上方还是下方（bottom = 原版：最新信在堆栈最下方）；
   // offsetX/offsetY 为堆栈距右缘 / 上缘的边距（px）。letterGap 为信间距（px）。

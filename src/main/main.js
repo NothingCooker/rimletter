@@ -216,13 +216,24 @@ function createWindow() {
   });
 }
 
+// 设置窗置顶开关：托盘菜单可切。置顶级别与覆盖层同级（screen-saver），
+// 保证设置窗在覆盖层之上、可正常点击；关闭后行为同普通窗口（可被其他窗口遮挡）。
+function setSettingsAlwaysOnTop(enabled) {
+  config.settings = config.settings || {};
+  config.settings.alwaysOnTop = !!enabled;
+  saveConfig(configDir, config);
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    settingsWin.setAlwaysOnTop(!!enabled, 'screen-saver');
+  }
+}
+
 function openSettings() {
   if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.focus(); return; }
   settingsWin = new BrowserWindow({
     width: 680,
     height: 640,
     frame: false,
-    alwaysOnTop: true,
+    alwaysOnTop: !!(config.settings && config.settings.alwaysOnTop),
     resizable: true,
     backgroundColor: '#15191d',
     show: false,
@@ -230,8 +241,8 @@ function openSettings() {
   });
   settingsWin.loadFile(path.join(__dirname, '..', 'renderer', 'settings.html'));
   settingsWin.once('ready-to-show', () => {
-    // 与覆盖层同级置顶（screen-saver），保证设置窗在覆盖层之上、可正常点击
-    settingsWin.setAlwaysOnTop(true, 'screen-saver');
+    // 置顶级别与覆盖层同级（screen-saver），保证设置窗在覆盖层之上、可正常点击
+    if (config.settings && config.settings.alwaysOnTop) settingsWin.setAlwaysOnTop(true, 'screen-saver');
     settingsWin.show();
     settingsWin.focus();
   });
@@ -247,6 +258,8 @@ function createTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '设置', click: openSettings },
     { label: '测试播报', click: () => triggerLetter({ severity: 'ThreatSmall', title: '测试播报', description: '这是一封测试信' }) },
+    { type: 'separator' },
+    { label: '设置窗置顶', type: 'checkbox', checked: !!(config.settings && config.settings.alwaysOnTop), click: (item) => setSettingsAlwaysOnTop(item.checked) },
     { type: 'separator' },
     { label: '退出', click: () => app.quit() }
   ]));

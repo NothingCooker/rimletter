@@ -86,6 +86,15 @@ test('market 配置可持久化覆盖', () => {
   assert.equal(again.market.repo, 'me/plugins');
 });
 
+test('settings.alwaysOnTop 默认开启（设置窗置顶）', () => {
+  assert.equal(DEFAULT_CONFIG.settings.alwaysOnTop, true);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-'));
+  const cfg = loadConfig(dir);
+  cfg.settings.alwaysOnTop = false;
+  saveConfig(dir, cfg);
+  assert.equal(loadConfig(dir).settings.alwaysOnTop, false);
+});
+
 test('appearance 默认：新信在下方 + 边距默认 + 信间距 30', () => {
   assert.deepEqual(DEFAULT_CONFIG.appearance.position, { side: 'bottom', offsetX: 26, offsetY: 64 });
   assert.equal(DEFAULT_CONFIG.appearance.letterGap, 30);

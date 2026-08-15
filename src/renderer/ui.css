@@ -134,6 +134,13 @@ html, body {
   align-items: center;
   border-bottom: 1px solid rgb(97, 108, 122);
   padding: 10px 14px;
+  /* 无边框窗口的拖动区：系统级拖动（同真窗口），双击最大化/还原、拖到屏幕边缘吸附均生效 */
+  -webkit-app-region: drag;
+  user-select: none;
+}
+/* 标题栏内的可点控件排除出拖动区，否则点击会变成拖动 */
+.rw-titlebar button, .rw-titlebar a, .rw-titlebar select, .rw-titlebar input {
+  -webkit-app-region: no-drag;
 }
 .rw-titlebar b { font-size: 14px; letter-spacing: .5px; color: #e8ecf1; }
 .rw-tabs {
