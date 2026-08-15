@@ -162,24 +162,26 @@ html, body {
 .rw-lbl { width: 130px; text-align: right; color: #c8d0da; flex: none; }
 .rw-sep { border-top: 1px solid rgb(97, 108, 122); margin: 12px 0; opacity: .5; }
 
-/* 米色按钮（原作纹理）+ 亮色文字 */
+/* 米色按钮（原作纹理）+ 亮色文字。
+   素材 ButtonBG.png 为 64x64 米色渐变按钮（1px 黑边 + 圆角）。不用整图拉伸
+   （会把圆角/黑边拉变形），改用 border-image 九宫格：四角原样保留、中间拉伸。 */
 .rw-btn {
   display: inline-block;
-  background-image: url(../../assets/raw/ButtonBG.png);
-  background-size: 100% 100%;
-  padding: 7px 16px;
+  box-sizing: border-box;
+  border: 4px solid transparent;
+  border-image: url(../../assets/raw/ButtonBG.png) 4 fill / 4px / 0 stretch;
+  padding: 5px 14px;
   font-size: 12px;
   color: #ffffff;
   cursor: pointer;
   text-align: center;
   user-select: none;
-  border: none;
   font-family: inherit;
   text-shadow: 0 1px 2px rgba(0, 0, 0, .75);
 }
-.rw-btn:hover { background-image: url(../../assets/raw/ButtonBGMouseover.png); }
-.rw-btn:active { background-image: url(../../assets/raw/ButtonBGClick.png); }
-.rw-btn.small { padding: 3px 10px; font-size: 11px; }
+.rw-btn:hover { border-image-source: url(../../assets/raw/ButtonBGMouseover.png); }
+.rw-btn:active { border-image-source: url(../../assets/raw/ButtonBGClick.png); }
+.rw-btn.small { padding: 2px 9px; font-size: 11px; }
 
 /* 复选框 */
 .rw-cb {
@@ -207,19 +209,25 @@ html, body {
 }
 .rw-radio.on { background-image: url(../../assets/raw/RadioButOn.png); }
 
-/* 滑块 */
+/* 滑块：素材 SliderRail.png 是游戏原版 24x24 灰色圆角轨道（边缘带透明边距）。
+   不用整图拉伸（会把圆角拉变形），改用 border-image 九宫格：
+   两端圆角原样保留、中间拉伸。 */
 .rw-slider {
   position: relative;
+  box-sizing: border-box;
   width: 180px;
   height: 14px;
-  background-image: url(../../assets/raw/SliderRail.png);
-  background-size: 100% 100%;
+  background: rgb(10, 13, 16);
+  background-origin: border-box;
+  border: 5px solid transparent;
+  border-image: url(../../assets/raw/SliderRail.png) 8 fill / 5px / 0 stretch;
   cursor: pointer;
   flex: none;
 }
+/* thumb 相对 padding box 定位（比 border box 内缩 5px），top 补偿 border 高度使拇指中心对准轨道中心 */
 .rw-thumb {
   position: absolute;
-  top: -5px;
+  top: -10px;
   width: 24px;
   height: 24px;
   background-image: url(../../assets/raw/SliderHandle.png);
@@ -245,10 +253,9 @@ html, body {
 }
 .rw-btnresult .rw-gray { white-space: pre-wrap; word-break: break-word; max-width: 320px; }
 
-/* 下拉/输入 */
+/* 下拉/输入：下拉同按钮素材，同样九宫格（两端保留、中间拉伸） */
 .rw-select, .rw-input {
-  background-image: url(../../assets/raw/ButtonBG.png);
-  background-size: 100% 100%;
+  box-sizing: border-box;
   padding: 3px 8px;
   font-size: 11px;
   color: #ffffff;
@@ -256,6 +263,17 @@ html, body {
   cursor: pointer;
   font-family: inherit;
   text-shadow: 0 1px 2px rgba(0, 0, 0, .75);
+}
+.rw-select {
+  border: 4px solid transparent;
+  border-image: url(../../assets/raw/ButtonBG.png) 4 fill / 4px / 0 stretch;
+}
+.rw-input {
+  background: rgb(10, 13, 16);
+  color: #dfe6ee;
+  border: 1px solid rgb(97, 108, 122);
+  cursor: text;
+  width: 56px;
 }
 /* 下拉弹层：option 用深色文字，避免系统白底上白字看不清 */
 .rw-select option {

@@ -10,7 +10,11 @@ const DEFAULT_CONFIG = {
   recoveryDismissMs: 10000,
   recoveryNotifications: true, // 是否播报「已恢复正常」信（关闭后告警状态仍正常复位，只是不再广播恢复信）
   api: { enabled: true, port: 17301, token: 'auto', host: '127.0.0.1', cors: false },
-  appearance: { iconSize: 64 },
+  // appearance.position：新信弹出位置。side 为上方（top）/ 下方（bottom），
+  // 指新信出现在已有信堆栈的上方还是下方（bottom = 原版：最新信在堆栈最下方）；
+  // offsetX/offsetY 为堆栈距右缘 / 上缘的边距（px）。letterGap 为信间距（px）。
+  // 默认值与原版一致：右上角、右 26 上 64、间距 30、新信在下方。
+  appearance: { iconSize: 64, position: { side: 'bottom', offsetX: 26, offsetY: 64 }, letterGap: 30 },
   sound: { enabled: true, volume: 0.25 },
   update: { enabled: true, proxyChannels: ['https://ghproxy.net', 'https://gh-proxy.com'], speedTest: true },
   market: { repo: 'NothingCooker/rimletter-official-plugins', branch: 'main' },
@@ -31,12 +35,21 @@ const OLD_UPDATE_CHANNELS = ['https://gh.ddlc.top', 'https://ghproxy.net'];
 
 // 返回是否发生了迁移；调用方据此决定是否持久化。
 function migrateConfig(cfg) {
+  let changed = false;
   const channels = cfg && cfg.update && cfg.update.proxyChannels;
   if (Array.isArray(channels) && JSON.stringify(channels) === JSON.stringify(OLD_UPDATE_CHANNELS)) {
     cfg.update.proxyChannels = [...DEFAULT_CONFIG.update.proxyChannels];
-    return true;
+    changed = true;
   }
-  return false;
+  // 旧版 appearance.position.anchor 是四角落（top-right 等），现改为 side（新信在堆栈上方/下方），
+  // 水平固定右侧。anchor 含 bottom 视为下方，其余视为上方。
+  const pos = cfg && cfg.appearance && cfg.appearance.position;
+  if (pos && pos.anchor && !pos.side) {
+    pos.side = pos.anchor.indexOf('bottom') === 0 ? 'bottom' : 'top';
+    delete pos.anchor;
+    changed = true;
+  }
+  return changed;
 }
 
 function configPath(dir) {
@@ -59,8 +72,12 @@ function loadConfig(dir) {
   try {
     if (fs.existsSync(configPath(dir))) {
       const raw = JSON.parse(fs.readFileSync(configPath(dir), 'utf-8'));
+      // 迁移必须在 deepMerge 之前对原始配置执行：
+      // 否则新默认值（如 position.side）会被 merge 进旧配置，导致「用户没设置过」的
+      // 判断失效（例：旧 anchor 四角落无法识别为待迁移项）。
+      const migrated = migrateConfig(raw);
       const cfg = deepMerge(defaults, raw);
-      if (migrateConfig(cfg)) saveConfig(dir, cfg);
+      if (migrated) saveConfig(dir, cfg);
       return cfg;
     }
   } catch (e) { /* 损坏则回退默认 */ }

@@ -49,6 +49,28 @@ function applyIconSize(px) {
   STYLE.textContent = '.letter .icon{width:' + size + 'px;height:' + Math.round(size * 50 / 64) + 'px}';
 }
 
+// 信堆栈位置由 config.appearance.position 驱动：堆栈固定在屏幕右侧，
+// offsetX/offsetY 为距右缘 / 上缘的边距（px）。side（top/bottom）决定新信插到堆栈上方还是下方，
+// 见 spawnLetter。inline 覆盖 ui.css 里的默认右上角。
+function applyPosition(pos) {
+  pos = pos || {};
+  const ox = Math.max(0, Math.min(2000, Number(pos.offsetX) || 0));
+  const oy = Math.max(0, Math.min(2000, Number(pos.offsetY) || 0));
+  const s = stack.style;
+  s.top = oy + 'px';
+  s.right = ox + 'px';
+  s.bottom = '';
+  s.left = '';
+  s.flexDirection = 'column';
+  s.alignItems = 'flex-end';
+}
+
+// 信间距由 config.appearance.letterGap 驱动（px）
+function applyLetterGap(px) {
+  const gap = Math.max(0, Math.min(200, Number(px) == null ? 30 : px));
+  stack.style.gap = gap + 'px';
+}
+
 function playSound(name) {
   if (!config.sound || config.sound.enabled === false) return;
   if (!name) return;
@@ -59,6 +81,8 @@ function playSound(name) {
 
 function spawnLetter(L) {
   startHoverCheck(); // 有信件才跑悬停检测
+  // 新信弹出位置：side = top 插到堆栈上方（最新信在最上面），bottom 追加到堆栈下方（原版）
+  const atTop = !!(config.appearance && config.appearance.position && config.appearance.position.side === 'top');
   const el = document.createElement('div');
   el.className = 'letter' + (L.bounce ? ' bounce' : '');
   el.innerHTML =
@@ -66,7 +90,31 @@ function spawnLetter(L) {
     '<img class="icon" src="../../assets/letter/' + L.tintFile + '" draggable="false">' +
     '<div class="label"><div class="bg"></div><span>' + escapeHtml(L.label) + '</span></div>' +
     '</div>';
-  stack.appendChild(el);
+  if (atTop) {
+    // 新信插到顶部，旧信被顶下——FLIP：记录旧位置 → 插入 → 过渡回原位
+    const before = [...stack.children].map(l => [l, l.getBoundingClientRect().top]);
+    stack.insertBefore(el, stack.firstChild);
+    // Invert + Play：先固定回旧位置（视觉不动），再过渡回原位 = 旧信平滑下移补位
+    requestAnimationFrame(() => {
+      before.forEach(([l, top]) => {
+        const d = top - l.getBoundingClientRect().top;
+        if (!d) return;
+        l.style.transition = 'none';
+        l.style.transform = 'translateY(' + d + 'px)';
+        void l.offsetHeight; // 强制重排，让初始 transform 生效
+        l.style.transition = 'transform .4s cubic-bezier(.2,.8,.3,1.15)';
+        l.style.transform = 'translateY(0)';
+        l.addEventListener('transitionend', function done(e) {
+          if (e.propertyName !== 'transform') return;
+          l.style.transition = '';
+          l.style.transform = '';
+          l.removeEventListener('transitionend', done);
+        });
+      });
+    });
+  } else {
+    stack.appendChild(el);
+  }
 
   // 到达闪光 + 音效
   spawnFlash(L, el, L.flashColor, 0.55, 0.7);
@@ -96,14 +144,14 @@ function spawnLetter(L) {
   // 自动消失
   setTimeout(() => { if (el.parentNode) dismiss(el, intervalId); }, L.dismissMs || 20000);
 
-  // 超出 6 封折叠为聚合提示
+  // 超出 6 封折叠为聚合提示（移除最老的一封：bottom 模式最老在顶部，top 模式最老在底部）
   while (stack.children.length > 6) {
-    const first = stack.firstChild;
-    if (first === el) break;
+    const oldest = atTop ? stack.lastChild : stack.firstChild;
+    if (oldest === el) break;
     // 直接摘除不走 dismiss（无动画/音效），但要安全处理悬停态：
     // 否则光标停在被摘掉的信上时 mouseleave 永不触发 → 整屏锁死
-    setHovered(first, false);
-    first.remove();
+    setHovered(oldest, false);
+    oldest.remove();
   }
 }
 
@@ -201,10 +249,14 @@ function escapeHtml(s) {
 window.rimletter.getConfig().then(cfg => {
   config = cfg;
   applyIconSize(cfg.appearance && cfg.appearance.iconSize);
+  applyPosition(cfg.appearance && cfg.appearance.position);
+  applyLetterGap(cfg.appearance && cfg.appearance.letterGap);
 }).catch(() => {});
 window.rimletter.onConfigChange(cfg => {
   config = cfg;
   applyIconSize(cfg.appearance && cfg.appearance.iconSize);
+  applyPosition(cfg.appearance && cfg.appearance.position);
+  applyLetterGap(cfg.appearance && cfg.appearance.letterGap);
 });
 window.rimletter.onLetter(L => spawnLetter(L));
 // 主进程守卫（看门狗超时兜底）强制恢复穿透时，同步复位渲染层悬停态。

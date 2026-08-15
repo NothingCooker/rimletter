@@ -45,10 +45,17 @@ async function init() {
 init();
 
 // ============ 常规设置 ============
+const LETTER_SIDES = [
+  ['top', '上方'],
+  ['bottom', '下方']
+];
 function renderGeneral() {
   const el = document.getElementById('pane-general');
   const iconPct = ((config.appearance && config.appearance.iconSize || 64) - 32) / (128 - 32) * 100;
   const curLogLevel = (config.log && config.log.level) || 'info';
+  const pos = (config.appearance && config.appearance.position) || {};
+  const curSide = pos.side || 'bottom';
+  const curGap = (config.appearance && config.appearance.letterGap != null) ? config.appearance.letterGap : 30;
   el.innerHTML =
     sliderRow('轮询间隔', 'pollIntervalMs', config.pollIntervalMs, 1000, 10000, '毫秒') +
     sliderRow('自动消失', 'autoDismissMs', config.autoDismissMs, 5000, 60000, '毫秒') +
@@ -57,6 +64,14 @@ function renderGeneral() {
       '<div class="rw-slider" data-target="appearance.iconSize" data-min="32" data-max="128" data-step="4">' +
         '<div class="rw-thumb" style="left:' + iconPct + '%"></div></div>' +
       '<span class="rw-gray" id="val-appearance.iconSize">' + (config.appearance && config.appearance.iconSize || 64) + ' px</span></div>' +
+    '<div class="rw-sep"></div>' +
+    '<div class="rw-row"><span class="rw-lbl">信弹出位置</span>' +
+      '<select class="rw-select" id="letter-side">' + LETTER_SIDES.map(a =>
+        '<option value="' + a[0] + '"' + (a[0] === curSide ? ' selected' : '') + '>' + a[1] + '</option>').join('') + '</select>' +
+      '<span class="rw-gray">新信出现在已有信的上方或下方</span></div>' +
+    posSliderRow('横向边距', 'appearance.position.offsetX', pos.offsetX, 0, 1000, 2, 'px') +
+    posSliderRow('纵向边距', 'appearance.position.offsetY', pos.offsetY, 0, 1000, 2, 'px') +
+    posSliderRow('信间距', 'appearance.letterGap', curGap, 0, 100, 2, 'px') +
     '<div class="rw-row"><span class="rw-lbl">开机自启</span>' +
       '<span class="rw-cb" id="autostart-cb"></span>' +
       '<span class="rw-gray" id="autostart-label">…</span></div>' +
@@ -91,6 +106,16 @@ function renderGeneral() {
       '<button class="rw-btn" id="update-check-btn">立即检查</button>' +
       '<button class="rw-btn" id="update-install-btn" style="display:none">立即重启安装</button></div>';
   bindSliders(el);
+
+  // 信弹出位置：新信在堆栈上方/下方（实时生效，覆盖层 onConfigChange 立即重排）
+  const sideEl = document.getElementById('letter-side');
+  if (sideEl) sideEl.addEventListener('change', () => {
+    config.appearance = config.appearance || {};
+    config.appearance.position = config.appearance.position || {};
+    config.appearance.position.side = sideEl.value;
+    persistConfig();
+  });
+
   el.querySelectorAll('[data-toggle]').forEach(cb => cb.addEventListener('click', () => {
     const path = cb.dataset.toggle;
     const cur = getPath(config, path);
@@ -166,6 +191,16 @@ function sliderRow(label, key, value, min, max, unit) {
     '<div class="rw-slider" data-target="' + key + '" data-min="' + min + '" data-max="' + max + '" data-step="' + (max - min) / 100 + '">' +
     '<div class="rw-thumb" style="left:' + pct + '%"></div></div>' +
     '<span class="rw-gray" id="val-' + key + '">' + value + ' ' + unit + '</span></div>';
+}
+
+// 位置/间距滑块（嵌套路径如 appearance.position.offsetX、appearance.letterGap，走 bindSliders 机制）
+function posSliderRow(label, key, value, min, max, step, unit) {
+  const v = Math.max(min, Math.min(max, Number(value) || 0));
+  const pct = (v - min) / (max - min) * 100;
+  return '<div class="rw-row"><span class="rw-lbl">' + label + '</span>' +
+    '<div class="rw-slider" data-target="' + key + '" data-min="' + min + '" data-max="' + max + '" data-step="' + step + '">' +
+    '<div class="rw-thumb" style="left:' + pct + '%"></div></div>' +
+    '<span class="rw-gray" id="val-' + key + '">' + v + ' ' + unit + '</span></div>';
 }
 
 // ============ 告警规则 ============
@@ -648,13 +683,17 @@ function bindSliders(scope) {
 }
 function fmtValue(target, v) {
   if (target === 'sound.volume') return Math.round(v * 100) + '%';
-  if (target === 'appearance.iconSize') return v + ' px';
+  if (target.indexOf('appearance.') === 0) return Math.round(v) + ' px'; // iconSize / position.* / letterGap
   return Math.round(v) + ' ms';
 }
 function setPath(obj, pathStr, value) {
   const parts = pathStr.split('.');
   let o = obj;
-  for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
+  for (let i = 0; i < parts.length - 1; i++) {
+    // 中间层缺失时补空对象（如旧配置没有 appearance.position）
+    if (o[parts[i]] == null || typeof o[parts[i]] !== 'object') o[parts[i]] = {};
+    o = o[parts[i]];
+  }
   o[parts[parts.length - 1]] = value;
 }
 function getPath(obj, pathStr) {
