@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { createSensors } = require('../src/main/sensors');
+const { createSensors, defaultListMounts } = require('../src/main/sensors');
 
 test('cpu 读取当前负载百分比', async () => {
   const mock = { currentLoad: async () => ({ currentLoad: 88.5 }) };
@@ -156,4 +156,61 @@ test('snapshot(keys) 插件传感器 read 抛错时该传感器降级为 undefin
   const snap = await sensors.snapshot(['cpu', 'bad']);
   assert.equal(snap.cpu.load, 1);
   assert.equal(snap.bad, undefined);
+});
+
+// ---- Linux 挂载点枚举（/proc/mounts）----
+
+const PROC_MOUNTS =
+  'proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n' +
+  'sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0\n' +
+  '/dev/sda2 / ext4 rw,relatime 0 0\n' +
+  '/dev/sda2 /var/lib/docker/overlay2 ext4 rw,relatime 0 0\n' + // 同一设备 bind mount → 去重
+  '/dev/nvme0n1p5 /home btrfs rw,relatime 0 0\n' +
+  '/dev/loop3 /snap/core/xxx squashfs ro,nodev,relatime 0 0\n' + // loop 排除
+  '/dev/zram0 /var/swap zram rw 0 0\n' +                          // zram 排除
+  'tmpfs /run tmpfs rw,nosuid,nodev 0 0\n' +
+  '192.168.1.5:/data /mnt/nfs nfs4 rw 0 0\n';                     // NFS 排除
+
+function mountsFs(text) {
+  return { readFileSync: (p) => { if (p === '/proc/mounts') return text; throw new Error('not found'); } };
+}
+
+test('defaultListMounts 只保留真实块设备挂载并排除 loop/zram/伪文件系统', () => {
+  const mounts = defaultListMounts(mountsFs(PROC_MOUNTS));
+  assert.deepEqual(mounts, ['/', '/home']);
+});
+
+test('defaultListMounts 对同一设备 bind mount 去重（保留首个目标）', () => {
+  const text = '/dev/sda2 / ext4 rw 0 0\n/dev/sda2 /mnt/other ext4 rw 0 0\n';
+  assert.deepEqual(defaultListMounts(mountsFs(text)), ['/']);
+});
+
+test('defaultListMounts /proc/mounts 读取失败时回退根挂载点', () => {
+  assert.deepEqual(defaultListMounts({ readFileSync: () => { throw new Error('EACCES'); } }), ['/']);
+});
+
+test('defaultListMounts 无 /dev/ 挂载时回退根挂载点', () => {
+  assert.deepEqual(defaultListMounts(mountsFs('proc /proc proc 0 0\ntmpfs /tmp tmpfs 0 0\n')), ['/']);
+});
+
+test('Linux 平台默认用 /proc/mounts 枚举磁盘（statfsSync 读挂载点）', async () => {
+  const fs = {
+    readFileSync: () => PROC_MOUNTS,
+    statfsSync: (root) => ({ bavail: 8e9, bsize: 1, blocks: 1000, bfree: 500 })
+  };
+  const sensors = createSensors({ si: {}, fs, platform: 'linux' });
+  const out = await sensors.disk.read();
+  assert.equal(out[0].mount, '/');
+  assert.equal(Math.round(out[0].freeGB), 8);
+});
+
+test('win32 平台默认仍用盘符枚举（不受平台分支影响）', async () => {
+  const fs = {
+    existsSync: (p) => p === 'C:\\',
+    statfsSync: (root) => ({ bavail: 8e9, bsize: 1, blocks: 1000, bfree: 500 })
+  };
+  const sensors = createSensors({ si: {}, fs, platform: 'win32' });
+  const out = await sensors.disk.read();
+  assert.equal(out.length, 1);
+  assert.equal(out[0].mount, 'C:');
 });

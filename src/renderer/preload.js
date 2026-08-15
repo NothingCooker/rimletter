@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('rimletter', {
   onConfigChange: (cb) => ipcRenderer.on('config:changed', (_e, cfg) => cb(cfg)),
   setMouseOver: (over) => ipcRenderer.send('overlay:mouseover', over),
   notifyEmpty: () => ipcRenderer.send('overlay:empty'),
+  // Linux 悬停检测：主进程每 200ms 轮询全局光标位置喂给渲染层（forward 选项 Linux 不支持）
+  onCursorPos: (cb) => ipcRenderer.on('overlay:cursor', (_e, p) => cb(p)),
   onMouseLeaveForce: (cb) => ipcRenderer.on('overlay:mouse-leave-force', () => cb()),
   getUpdateState: () => ipcRenderer.invoke('update:state'),
   checkForUpdate: () => ipcRenderer.invoke('update:check'),

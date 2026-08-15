@@ -178,13 +178,13 @@ function renderGeneral() {
   const autoLabel = document.getElementById('autostart-label');
   window.rimletter.getAutostart().then(on => {
     autoCb.classList.toggle('on', on);
-    autoLabel.textContent = on ? '开启（登录 Windows 时自动启动）' : '关闭';
+    autoLabel.textContent = on ? '开启（登录系统时自动启动）' : '关闭';
   });
   autoCb.addEventListener('click', async () => {
     const on = !autoCb.classList.contains('on');
     const ok = await window.rimletter.setAutostart(on);
     autoCb.classList.toggle('on', ok);
-    autoLabel.textContent = ok ? '开启（登录 Windows 时自动启动）' : '关闭';
+    autoLabel.textContent = ok ? '开启（登录系统时自动启动）' : '关闭';
   });
 }
 

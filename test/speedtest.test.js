@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { buildChannelProbeUrls, fetchManifest, parsePath } = require('../src/main/speedtest');
+const { buildChannelProbeUrls, fetchManifest, parsePath, manifestName } = require('../src/main/speedtest');
 
 test('buildChannelProbeUrls 生成 proxy + github 探测 URL', () => {
   const urls = buildChannelProbeUrls({ proxyChannels: ['https://p1'], publishRepo: 'o/r', arch: 'x64' });
@@ -15,6 +15,25 @@ test('buildChannelProbeUrls 生成 proxy + github 探测 URL', () => {
 test('arm64 用 latest-arm64.yml', () => {
   const urls = buildChannelProbeUrls({ proxyChannels: [], publishRepo: 'o/r', arch: 'arm64' });
   assert.equal(urls[0].manifestUrl, 'https://github.com/o/r/releases/latest/download/latest-arm64.yml');
+});
+
+test('linux x64 用 latest-linux.yml', () => {
+  const urls = buildChannelProbeUrls({ proxyChannels: ['https://p1'], publishRepo: 'o/r', arch: 'x64', platform: 'linux' });
+  assert.equal(urls[0].manifestUrl, 'https://p1/https://github.com/o/r/releases/latest/download/latest-linux.yml');
+  assert.equal(urls[1].manifestUrl, 'https://github.com/o/r/releases/latest/download/latest-linux.yml');
+});
+
+test('linux arm64 用 latest-linux-arm64.yml', () => {
+  const urls = buildChannelProbeUrls({ proxyChannels: [], publishRepo: 'o/r', arch: 'arm64', platform: 'linux' });
+  assert.equal(urls[0].manifestUrl, 'https://github.com/o/r/releases/latest/download/latest-linux-arm64.yml');
+});
+
+test('manifestName 按平台+架构选清单文件名', () => {
+  assert.equal(manifestName('win32', 'x64'), 'latest.yml');
+  assert.equal(manifestName('win32', 'ia32'), 'latest.yml');
+  assert.equal(manifestName('win32', 'arm64'), 'latest-arm64.yml');
+  assert.equal(manifestName('linux', 'x64'), 'latest-linux.yml');
+  assert.equal(manifestName('linux', 'arm64'), 'latest-linux-arm64.yml');
 });
 
 test('无 proxyChannels 时仅原生 github', () => {

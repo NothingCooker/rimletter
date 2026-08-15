@@ -242,6 +242,23 @@ test('isSpeedTestEnabled false 时跳过测速', async () => {
   assert.deepEqual(au.feedHistory.map(f => f.provider), ['generic']);
 });
 
+test('测速开启时把 platform 传给 buildChannelProbeUrls（Linux 清单名平台化）', async () => {
+  const au = mockAutoUpdater({ failFirst: 0 });
+  let gotPlatform = null;
+  const speedTest = {
+    buildChannelProbeUrls: (opts) => { gotPlatform = opts.platform; return [{ label: 'github', manifestUrl: 'm2', installBase: 'b2' }]; },
+    fetchManifest: async () => ({ ok: true, path: 'x' }),
+    measureThroughput: async () => ({ ok: true, mbps: 5 }),
+    rankChannels: (c) => c
+  };
+  const updater = createUpdater({ autoUpdater: au, publishRepo: 'o/r', platform: 'linux', speedTest, fetch: async () => {}, isSpeedTestEnabled: () => true });
+  updater.init();
+  const p = updater.checkNow();
+  au.emit('update-not-available');
+  await p;
+  assert.equal(gotPlatform, 'linux');
+});
+
 test('未注入 speedTest 时不测速直接检查', async () => {
   const au = mockAutoUpdater({ failFirst: 0 });
   const updater = createUpdater({ autoUpdater: au, isSpeedTestEnabled: () => true }); // 无 speedTest/fetch

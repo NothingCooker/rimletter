@@ -17,6 +17,9 @@ function setHovered(el, on) {
 
 // 光标位置：window 级 mousemove 持续更新。forward 转发让窗口点击穿透时也能收到
 // 坐标，因此这里始终是「当前光标位置」（渲染层同一 CSS 像素空间，无跨进程换算）。
+// Linux 无 forward（setIgnoreMouseEvents 的 forward 仅 darwin/win32）：覆盖层穿透时
+// 收不到 mousemove，改由主进程 screen.getCursorScreenPoint() 每 200ms 轮询经
+// overlay:cursor IPC 喂坐标，同样写入 lastX/lastY，复用下方 elementFromPoint 悬停核对。
 let lastX = 0, lastY = 0;
 window.addEventListener('mousemove', (e) => { lastX = e.clientX; lastY = e.clientY; });
 
@@ -268,6 +271,10 @@ window.rimletter.onConfigChange(cfg => {
   applyLetterGap(cfg.appearance && cfg.appearance.letterGap);
 });
 window.rimletter.onLetter(L => spawnLetter(L));
+// Linux：主进程光标轮询喂坐标（覆盖层穿透时 mousemove 不触发）
+window.rimletter.onCursorPos(p => {
+  if (p && typeof p.x === 'number' && typeof p.y === 'number') { lastX = p.x; lastY = p.y; }
+});
 // 主进程守卫（看门狗超时兜底）强制恢复穿透时，同步复位渲染层悬停态。
 // 仅在确实悬停时才回发，避免与主进程的 setClickThrough 通知互相触发成 IPC 乒乓。
 window.rimletter.onMouseLeaveForce(() => {

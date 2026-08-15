@@ -1,12 +1,21 @@
 # RimLetter 边缘信使
 
-**⬇️ 下载最新版（Windows · NSIS 安装程序）**
+**⬇️ 下载最新版**
+
+**Windows（NSIS 安装程序）**
 
 - **x64（推荐）**：[GitHub Release 下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-x64.exe) · [中国大陆加速下载](https://ghproxy.net/https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-x64.exe)
 - **ARM64**：[GitHub Release 下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-arm64.exe) · [加速下载](https://ghproxy.net/https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-arm64.exe)
 - **x86（32 位）**：[GitHub Release 下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-Setup-ia32.exe)
 
-> 加速链接走 ghproxy.net 公益镜像（备选 gh-proxy.com）。安装包内置自动更新，启动后按当前系统架构自动匹配对应安装包（x64/ia32 读 `latest.yml`，arm64 读 `latest-arm64.yml`）。
+**Linux（AppImage / deb）**
+
+- **AppImage x86_64**：[GitHub Release 下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-x86_64.AppImage)（下载后 `chmod +x` 直接运行，支持自动更新）
+- **AppImage ARM64**：[GitHub Release 下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-arm64.AppImage)
+- **deb x64（Debian/Ubuntu）**：[下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-amd64.deb)（`sudo dpkg -i RimLetter-amd64.deb` 安装）
+- **deb arm64**：[下载](https://github.com/NothingCooker/rimletter/releases/latest/download/RimLetter-arm64.deb)
+
+> 加速链接走 ghproxy.net 公益镜像（备选 gh-proxy.com）。Windows 安装包内置自动更新，启动后按当前系统架构自动匹配对应安装包（x64/ia32 读 `latest.yml`，arm64 读 `latest-arm64.yml`）；Linux 仅 **AppImage 支持自动更新**（读 `latest-linux.yml` / `latest-linux-arm64.yml`），deb 包更新请重新下载安装。
 
 一个参考《边缘世界》(RimWorld) 右侧 Letter 信件播报系统的桌面功能性摆件。当硬件占用过高（CPU / 内存 / 磁盘 / GPU）时，信从屏幕右缘坠落滑入提醒；平时完全隐身，告警才出现。全程使用游戏解包的原始 UI 素材与配色，并支持本地 HTTP API 和手写 JS 插件扩展。
 官方插件仓库：https://github.com/NothingCooker/rimletter-official-plugins
@@ -65,16 +74,24 @@ python scripts/extract_assets.py
 npm run build
 ```
 
-产物在 `dist/` 目录（NSIS 安装程序）。GitHub Actions 已在 `.github/workflows/build.yml` 中配置自动编译，推送到仓库后自动产出 Windows 安装包（在 Actions 的 Artifacts 中下载）。
+产物在 `dist/` 目录（Windows：NSIS 安装程序；Linux：AppImage + deb，各含 x64/arm64）。GitHub Actions 已在 `.github/workflows/build.yml` 中配置自动编译，推送到仓库后自动产出 Windows 与 Linux 安装包（在 Actions 的 Artifacts 中下载）。
 
 ## 配置
 
-配置文件位于 `%APPDATA%\rimletter\config.json`（Windows），也可以在设置窗口调整：
+配置文件位于 `%APPDATA%\rimletter\config.json`（Windows）/ `~/.config/rimletter/config.json`（Linux），也可以在设置窗口调整：
 
 - 轮询间隔、自动消失时长
 - 信图标大小、信弹出位置（新信出现在已有信的上方/下方/左侧/右侧 + 横向/纵向边距上限 2000 + 信间距）
 - 音效开关与音量
 - 告警规则（增删改、启停）
+
+## Linux 注意事项
+
+- **推荐 X11 会话**：透明悬浮层/置顶/点击穿透在 X11（带合成器的桌面环境，KDE/GNOME/Xfce 等默认均有）下工作正常；**Wayland 会话为部分支持**（窗口位置不受应用控制、点击穿透依赖合成器实现），如遇异常请切回 X11 会话（登录界面选择 "Xorg"）。
+- **托盘图标**：Linux 托盘依赖桌面环境的 StatusNotifier/AppIndicator 支持；GNOME 需安装 "AppIndicator and KStatusNotifierItem Support" 扩展。
+- **开机自启**：写入 XDG autostart（`~/.config/autostart/rimletter.desktop`），设置窗开关即可。
+- **GPU 监控**：仅 NVIDIA（nvidia-smi 直读）。AMD 官方插件 amd-gpu-stats 依赖 LibreHardwareMonitor，**仅支持 Windows**，Linux 上暂不可用。
+- **磁盘规则**：按真实块设备挂载点（`/`、`/home` 等）逐一判定，自动排除 loop/zram/网络盘等伪或非本地文件系统。
 
 ## HTTP API
 
@@ -102,7 +119,7 @@ curl -X POST http://127.0.0.1:17301/letter \
 
 ## 插件开发
 
-插件是 `%APPDATA%\rimletter\plugins\` 目录下的一个 `.js` 文件，导出 `async ({ api, logger }) => {}`。可注册自定义传感器（自动出现在规则下拉中）、注册规则、主动触发播报、订阅事件、定时任务，以及声明配置表单。
+插件是插件目录下的一个 `.js` 文件（Windows：`%APPDATA%\rimletter\plugins\`；Linux：`~/.config/rimletter/plugins/`），导出 `async ({ api, logger }) => {}`。可注册自定义传感器（自动出现在规则下拉中）、注册规则、主动触发播报、订阅事件、定时任务，以及声明配置表单。
 
 ### 插件 API
 

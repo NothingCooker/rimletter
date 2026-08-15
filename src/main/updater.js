@@ -13,6 +13,7 @@ function createUpdater(deps) {
     speedTest = null,                   // 测速模块（src/main/speedtest.js）；null=禁用
     fetch = null,                       // 测速用 fetch；null=禁用
     arch = null,                        // process.arch，决定清单文件名
+    platform = 'win32',                 // process.platform，决定清单文件名（linux → latest-linux.yml）
     isSpeedTestEnabled = () => false    // live 回调，读实时 config
   } = deps;
 
@@ -53,7 +54,7 @@ function createUpdater(deps) {
   function speedTestChannels() {
     let probeUrls;
     try {
-      probeUrls = speedTest.buildChannelProbeUrls({ proxyChannels, publishRepo, arch });
+      probeUrls = speedTest.buildChannelProbeUrls({ proxyChannels, publishRepo, arch, platform });
     } catch (e) {
       return Promise.resolve(null);
     }

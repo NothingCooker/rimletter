@@ -16,7 +16,7 @@ const { loadPlugins, assertSchema, normalizeConfig, getPluginConfig, emitPluginE
 const { createMarket } = require('./market');
 const { createUpdater } = require('./updater');
 const speedtest = require('./speedtest');
-const { buildAutostartOptions } = require('./autostart');
+const { buildAutostartOptions, getLinuxAutostartEnabled, setLinuxAutostart } = require('./autostart');
 const { autoUpdater } = require('electron-updater');
 
 let mainWindow = null;
@@ -33,6 +33,12 @@ let updater = null;
 let market = null;
 let overlayGuard = null;      // 覆盖层鼠标穿透守卫（见 overlayMouse.js）
 
+// Linux：设置桌面文件名（用于托盘/应用指示器的 desktop file 关联，须在 ready 事件前调用；
+// Linux 托盘图标需要桌面环境支持 StatusNotifier/AppIndicator）
+if (process.platform === 'linux') {
+  try { app.setDesktopName('rimletter.desktop'); } catch { /* 个别环境不支持时忽略 */ }
+}
+
 const ASSETS = path.join(__dirname, '..', '..', 'assets');
 
 function send(channel, payload) {
@@ -41,6 +47,30 @@ function send(channel, payload) {
 
 function sendToSettings(channel, payload) {
   if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send(channel, payload);
+}
+
+// ---- Linux 悬停检测：主进程光标轮询 ----
+// setIgnoreMouseEvents 的 forward 选项仅支持 darwin/win32（Linux 上被忽略）：
+// 覆盖层点击穿透时渲染层收不到 mousemove，其 elementFromPoint 悬停核对会因坐标不更新而失效。
+// Linux 改为主进程每 200ms 用 screen.getCursorScreenPoint() 轮询光标（返回 DIP，与渲染层
+// CSS 像素同坐标空间），经 overlay:cursor IPC 喂给渲染层，复用其 elementFromPoint 悬停权威。
+// 仅覆盖层窗口可见（有信件）时轮询，空闲零开销；Windows/macOS 走原 forward 方案不启用。
+let cursorPollTimer = null;
+function ensureCursorPolling() {
+  if (process.platform !== 'linux' || cursorPollTimer || !mainWindow || mainWindow.isDestroyed()) return;
+  cursorPollTimer = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
+    const p = screen.getCursorScreenPoint();
+    mainWindow.webContents.send('overlay:cursor', { x: p.x, y: p.y });
+  }, 200);
+}
+function stopCursorPolling() {
+  if (cursorPollTimer) { clearInterval(cursorPollTimer); cursorPollTimer = null; }
+}
+
+// setIgnoreMouseEvents 的 forward 参数仅 darwin/win32 有效（Linux 忽略），按平台组装选项
+function ignoreMouseOptions() {
+  return process.platform === 'linux' ? {} : { forward: true };
 }
 
 function getEffectiveRules() {
@@ -63,6 +93,7 @@ function triggerLetter({ severity, title, description, sound, dismissMs, recover
   if (log) log.info('发信', severity, title);
   // 性能优化：覆盖层窗口平时隐藏，有信件才显示（不抢焦点），避免全屏透明窗持续合成
   if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.showInactive();
+  ensureCursorPolling(); // Linux：有信件即可开始喂光标位置给渲染层悬停检测
   send('letter:new', letter);
 }
 
@@ -155,6 +186,7 @@ function initUpdater() {
     publishRepo: 'NothingCooker/rimletter',
     fetch: globalThis.fetch,
     arch: process.arch,
+    platform: process.platform, // 决定更新清单文件名（linux → latest-linux.yml / latest-linux-arm64.yml）
     speedTest: speedtest,
     onStatus: (st) => { if (log) log.info('更新状态', st.code, st.version || '', st.channel || '', st.error || ''); sendToSettings('update:status', st); },
     onDownloaded: () => triggerLetter({
@@ -176,11 +208,11 @@ function ensureOverlayGuard() {
     overlayGuard = createOverlayMouseGuard({
       setClickThrough: () => {
         if (!mainWindow) return;
-        mainWindow.setIgnoreMouseEvents(true, { forward: true });
+        mainWindow.setIgnoreMouseEvents(true, ignoreMouseOptions());
         // 同步渲染层复位悬停态，避免其内部 hovered 残留
         mainWindow.webContents.send('overlay:mouse-leave-force');
       },
-      setInteractive: () => { if (mainWindow) mainWindow.setIgnoreMouseEvents(false, { forward: true }); },
+      setInteractive: () => { if (mainWindow) mainWindow.setIgnoreMouseEvents(false, ignoreMouseOptions()); },
       timeoutMs: 3000,
       intervalMs: 1000
     });
@@ -203,15 +235,16 @@ function createWindow() {
     backgroundColor: '#00000000',
     webPreferences: { preload: path.join(__dirname, '..', 'renderer', 'preload.js'), contextIsolation: true }
   });
-  mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  mainWindow.setIgnoreMouseEvents(true, ignoreMouseOptions());
   mainWindow.once('ready-to-show', () => {
     // 透明无边框窗口有时不立即应用鼠标穿透（Windows 已知问题），首帧后再断言一次
-    mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    mainWindow.setIgnoreMouseEvents(true, ignoreMouseOptions());
   });
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'overlay.html'));
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
   mainWindow.on('closed', () => {
     mainWindow = null;
+    stopCursorPolling();
     if (overlayGuard) { overlayGuard.stop(); overlayGuard = null; }
   });
 }
@@ -273,8 +306,20 @@ ipcMain.handle('app:info', () => ({
   authorUrl: 'https://github.com/NothingCooker',
   social: 'https://space.bilibili.com/514132068'
 }));
-ipcMain.handle('autostart:get', () => app.getLoginItemSettings().openAtLogin);
+ipcMain.handle('autostart:get', () => {
+  // Electron 的 getLoginItemSettings/setLoginItemSettings 仅支持 darwin/win32，
+  // Linux 自启走 XDG autostart（~/.config/autostart/rimletter.desktop，见 autostart.js）
+  if (process.platform === 'linux') return getLinuxAutostartEnabled();
+  return app.getLoginItemSettings().openAtLogin;
+});
 ipcMain.handle('autostart:set', (e, enable) => {
+  if (process.platform === 'linux') {
+    return setLinuxAutostart(!!enable, {
+      packaged: app.isPackaged,
+      execPath: process.execPath,
+      appPath: app.getAppPath()
+    });
+  }
   // 开发模式（npm start）execPath 是裸 electron.exe，需显式传 app 路径参数，
   // 否则开机启动的是裸 electron → 打开 Electron 欢迎页而非主程序
   app.setLoginItemSettings(buildAutostartOptions(enable, {
@@ -389,6 +434,7 @@ ipcMain.on('overlay:mouseover', (e, over) => ensureOverlayGuard().onHover(over))
 ipcMain.on('overlay:empty', () => {
   if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
     mainWindow.hide();
+    stopCursorPolling(); // Linux 光标轮询随窗口隐藏停止（无信件无需喂坐标）
     if (overlayGuard) overlayGuard.stop();
   }
 });

@@ -1,5 +1,6 @@
 // src/main/sensors.js
 const nodeFs = require('node:fs');
+const nodeOs = require('node:os');
 
 // 枚举 Windows 盘符（A:-\Z:\），只保留可访问的根路径。无子进程。
 function defaultListDrives(fs) {
@@ -11,8 +12,35 @@ function defaultListDrives(fs) {
   return drives;
 }
 
-function createSensors({ si, execFile, extraSensors, fs = nodeFs, listDrives } = {}) {
-  const drives = listDrives || (() => defaultListDrives(fs));
+// 枚举 Linux/macOS 挂载点：读 /proc/mounts（Linux），只保留真实块设备挂载（源以 /dev/ 开头，
+// 覆盖 root/home/数据盘，天然排除 proc/sysfs/tmpfs/NFS 等伪或网络文件系统），
+// 排除 loop（snap/flatpak 只读镜像）与 ram/zram 设备（RAM 盘，空间语义失真），
+// 按源设备去重（同一设备 bind mount 到多处时只保留首个目标，避免同盘多封重复信）。无子进程。
+function defaultListMounts(fs) {
+  try {
+    const text = fs.readFileSync('/proc/mounts', 'utf-8');
+    const seen = new Set();
+    const mounts = [];
+    for (const line of String(text).split('\n')) {
+      const parts = line.split(/\s+/);
+      if (parts.length < 2) continue;
+      const src = parts[0], target = parts[1];
+      if (typeof src !== 'string' || !src.startsWith('/dev/')) continue;
+      const dev = src.slice('/dev/'.length);
+      if (/^(loop|ram|zram)\d/.test(dev)) continue;
+      if (seen.has(dev)) continue;
+      seen.add(dev);
+      mounts.push(target);
+    }
+    return mounts.length ? mounts : ['/'];
+  } catch {
+    return ['/'];
+  }
+}
+
+function createSensors({ si, execFile, extraSensors, fs = nodeFs, listDrives, platform = nodeOs.platform() } = {}) {
+  // 默认按平台选挂载点来源：win32 → 盘符枚举；其余（linux/macOS）→ /proc/mounts 挂载点
+  const drives = listDrives || (() => (platform === 'win32' ? defaultListDrives(fs) : defaultListMounts(fs)));
   const cpu = {
     name: 'CPU',
     async read() {
@@ -104,4 +132,4 @@ function createSensors({ si, execFile, extraSensors, fs = nodeFs, listDrives } =
   return { cpu, mem, disk, gpu, snapshot };
 }
 
-module.exports = { createSensors };
+module.exports = { createSensors, defaultListMounts };

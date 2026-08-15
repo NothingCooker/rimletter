@@ -1,5 +1,6 @@
 // src/main/log.js — 轻量文件日志
-// 按级别写 %APPDATA%\rimletter\logs\rimletter.log，超过 maxBytes 时轮转到 .1.log。
+// 写入 userData/logs/rimletter.log（Windows: %APPDATA%\rimletter\logs，Linux: ~/.config/rimletter/logs），
+// 超过 maxBytes 时轮转到 .1.log。
 // 每次写按行追加，低频率场景够用；错误对象/对象参数自动序列化。
 const fs = require('node:fs');
 const path = require('node:path');

@@ -26,3 +26,20 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+linux:
+  icon: build/icon.png
+  category: Utility
+  # deb 包维护者（electron-builder 要求，author 无邮箱时 deb 构建会报错）
+  maintainer: NothingCooker <nothingcooker@users.noreply.github.com>
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: deb
+      arch:
+        - x64
+        - arm64
+  # 稳定文件名（不带版本号）：README 的 releases/latest/download/ 下载链接依赖此名。
+  # ${arch} 由 electron-builder 按目标展开：AppImage x64→x86_64/arm64→arm64，deb x64→amd64/arm64→arm64
+  artifactName: ${productName}-${arch}.${ext}

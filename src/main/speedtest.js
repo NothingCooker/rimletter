@@ -3,11 +3,20 @@
 const DEFAULT_CHUNK_BYTES = 1024 * 1024; // 1MB
 const DEFAULT_TIMEOUT_MS = 5000;
 
+// 各平台更新清单文件名（与 electron-builder 生成规则一致，见 app-builder-lib
+// publish/updateInfoBuilder.getUpdateInfoFileName）：
+// - win32：x64/ia32 → latest.yml，arm64 → latest-arm64.yml
+// - linux：x64 → latest-linux.yml，arm64 → latest-linux-arm64.yml（os 后缀 -linux + 非 x64 加 -${arch}）
+function manifestName(platform, arch) {
+  if (platform === 'linux') return arch === 'arm64' ? 'latest-linux-arm64.yml' : 'latest-linux.yml';
+  return arch === 'arm64' ? 'latest-arm64.yml' : 'latest.yml';
+}
+
 // 通道探测 URL：每个加速前缀一个清单/安装包基址，末尾追加原生 github
-function buildChannelProbeUrls({ proxyChannels = [], publishRepo, arch }) {
+function buildChannelProbeUrls({ proxyChannels = [], publishRepo, arch, platform = 'win32' }) {
   const parts = publishRepo.split('/');
   const owner = parts[0], repo = parts[1];
-  const manifest = arch === 'arm64' ? 'latest-arm64.yml' : 'latest.yml';
+  const manifest = manifestName(platform, arch);
   const urls = proxyChannels.map(base => ({
     label: base.replace(/^https?:\/\//, ''),
     manifestUrl: base + '/https://github.com/' + owner + '/' + repo + '/releases/latest/download/' + manifest,
@@ -96,4 +105,4 @@ function rankChannels(channels, resultsByLabel) {
   return [...channels].sort((a, b) => score(b.label) - score(a.label));
 }
 
-module.exports = { buildChannelProbeUrls, fetchManifest, parsePath, measureThroughput, rankChannels, DEFAULT_CHUNK_BYTES, DEFAULT_TIMEOUT_MS };
+module.exports = { buildChannelProbeUrls, fetchManifest, parsePath, measureThroughput, rankChannels, manifestName, DEFAULT_CHUNK_BYTES, DEFAULT_TIMEOUT_MS };
