@@ -73,4 +73,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RimLetter-linux
-          path: dist/*.AppImage dist/*.deb
+          # upload-artifact v4 的 path 多模式需换行分隔（空格会被当作单个字面模式，匹配不到任何文件）
+          path: |
+            dist/*.AppImage
+            dist/*.deb
