@@ -53,8 +53,11 @@ function sendToSettings(channel, payload) {
 // ---- Linux 悬停检测：主进程光标轮询 ----
 // setIgnoreMouseEvents 的 forward 选项仅支持 darwin/win32（Linux 上被忽略）：
 // 覆盖层点击穿透时渲染层收不到 mousemove，其 elementFromPoint 悬停核对会因坐标不更新而失效。
-// Linux 改为主进程每 200ms 用 screen.getCursorScreenPoint() 轮询光标（返回 DIP，与渲染层
-// CSS 像素同坐标空间），经 overlay:cursor IPC 喂给渲染层，复用其 elementFromPoint 悬停权威。
+// Linux 改为主进程每 200ms 用 screen.getCursorScreenPoint() 轮询光标（返回 DIP），经
+// overlay:cursor IPC 喂给渲染层，复用其 elementFromPoint 悬停权威。
+// 注意坐标换算：getCursorScreenPoint 是屏幕绝对坐标，而渲染层 elementFromPoint 需要
+// 窗口本地坐标；覆盖层窗口位于主屏 (0,0) 时两者恰好相等，但选第二显示器后窗口原点
+// 不再是 (0,0)（可能是正偏移或负坐标），必须减去窗口位置（getPosition 同返回 DIP）。
 // 仅覆盖层窗口可见（有信件）时轮询，空闲零开销；Windows/macOS 走原 forward 方案不启用。
 let cursorPollTimer = null;
 function ensureCursorPolling() {
@@ -62,7 +65,8 @@ function ensureCursorPolling() {
   cursorPollTimer = setInterval(() => {
     if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
     const p = screen.getCursorScreenPoint();
-    mainWindow.webContents.send('overlay:cursor', { x: p.x, y: p.y });
+    const [wx, wy] = mainWindow.getPosition();
+    mainWindow.webContents.send('overlay:cursor', { x: p.x - wx, y: p.y - wy });
   }, 200);
 }
 function stopCursorPolling() {
