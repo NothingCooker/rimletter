@@ -39,14 +39,20 @@ function stillInBand(value, rule) {
   return value > lvl;
 }
 
-function extractValues(sensor, metric, snapshot) {
+// 数组型传感器（磁盘多挂载点）可按 rule.mount 精确筛选：只评估指定挂载点，
+// 未设置则评估全部（旧行为）。筛选后无匹配项视为无数据（不告警、也不误判恢复）。
+function extractValues(sensor, metric, snapshot, rule) {
   const data = snapshot[sensor];
   if (data === undefined || data === null) return [];
   if (Array.isArray(data)) {
-    return data.map(item => ({
-      value: item && item[metric] !== undefined ? item[metric] : undefined,
-      meta: item
-    })).filter(x => typeof x.value === 'number' && isFinite(x.value));
+    const mount = rule && rule.mount;
+    return data
+      .filter(item => !mount || (item && String(item.mount) === String(mount)))
+      .map(item => ({
+        value: item && item[metric] !== undefined ? item[metric] : undefined,
+        meta: item
+      }))
+      .filter(x => typeof x.value === 'number' && isFinite(x.value));
   }
   const v = data[metric];
   if (typeof v !== 'number' || !isFinite(v)) return [];
@@ -91,7 +97,7 @@ function evaluateRules(rules, snapshot, prevState = {}, now = Date.now()) {
   const nextState = {};
   for (const rule of rules) {
     if (!rule.enabled) { nextState[rule.id] = { status: 'idle', since: now }; continue; }
-    const entries = extractValues(rule.sensor, rule.metric, snapshot);
+    const entries = extractValues(rule.sensor, rule.metric, snapshot, rule);
     const st = prevState[rule.id] || { status: 'idle', since: now };
     const out = evaluateOne(rule, entries, st, now);
     nextState[rule.id] = out;
@@ -114,6 +120,7 @@ function neededSensors(rules) {
 function buildAlert(rule, entries) {
   const alert = {
     ruleId: rule.id,
+    sensor: rule.sensor,
     severity: rule.severity,
     label: rule.label,
     description: rule.description,

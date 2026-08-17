@@ -16,6 +16,7 @@ const SENSOR_METRICS = {
   'nvidia-gpu': [{ k: 'temp', label: '温度 °C' }, { k: 'load', label: '占用率 %' }]
 };
 let pluginSensorMetrics = {}; // { sensorName: [{k,label}] } 从最新传感器快照推断（内置之外的新键）
+let diskMounts = [];          // 当前磁盘分区列表（[{mount,freeGB,usedPct}]），规则编辑器「磁盘分区」下拉用
 const OPERATORS = ['>', '>=', '<', '<='];
 
 function switchTab(name) {
@@ -235,7 +236,7 @@ function renderRules() {
     const sev = SEVERITIES.find(s => s.key === r.severity) || SEVERITIES[3];
     rows += '<tr><td><span class="rw-cb' + (r.enabled ? ' on' : '') + '" data-id="' + r.id + '" data-enable></span></td>' +
       '<td>' + sensorLabel(r.sensor) + '</td>' +
-      '<td>' + metricLabel(r) + ' ' + r.operator + ' ' + r.threshold + (r.durationMs > 0 ? ' 持续 ' + (r.durationMs / 1000) + 's' : '') + (r.recoverPct > 0 ? ' 回落 ' + r.recoverPct + '%' : '') + '</td>' +
+      '<td>' + metricLabel(r) + ' ' + r.operator + ' ' + r.threshold + (r.mount ? ' [' + esc(r.mount) + ']' : '') + (r.durationMs > 0 ? ' 持续 ' + (r.durationMs / 1000) + 's' : '') + (r.recoverPct > 0 ? ' 回落 ' + r.recoverPct + '%' : '') + '</td>' +
       '<td><span class="rw-dot" style="background:' + sev.color + '"></span>' + sev.label + '</td>' +
       '<td>' + esc(r.label) + '</td>' +
       '<td><button class="rw-btn small" data-edit="' + r.id + '">编辑</button> <button class="rw-btn small" data-del="' + r.id + '">删</button></td></tr>';
@@ -265,6 +266,7 @@ function renderRules() {
 async function openEditor(id) {
   editingRuleId = id;
   const r = id ? config.rules.find(x => x.id === id) : defaultRule();
+  try { diskMounts = (await window.rimletter.getDiskMounts()) || []; } catch { diskMounts = []; }
   renderRuleEditor(r);          // 同步渲染（用当前缓存的插件传感器指标，首次为空则只含内置），不阻塞
   refreshPluginSensorMetrics(); // 后台刷新插件传感器指标，完成后原地更新下拉、保留当前选中
 }
@@ -277,6 +279,9 @@ function renderRuleEditor(r) {
     '<option value="' + m.k + '"' + (r.metric === m.k ? ' selected' : '') + '>' + m.label + '</option>').join('');
   const opOpts = OPERATORS.map(o => '<option' + (r.operator === o ? ' selected' : '') + '>' + o + '</option>').join('');
   const sevOpts = SEVERITIES.map(s => '<option value="' + s.key + '"' + (r.severity === s.key ? ' selected' : '') + '>' + s.label + '</option>').join('');
+  const mountOpts = '<option value=""' + (!r.mount ? ' selected' : '') + '>全部磁盘（任一分区触发）</option>' +
+    diskMounts.map(m => '<option value="' + esc(m.mount) + '"' + (String(r.mount) === String(m.mount) ? ' selected' : '') + '>' +
+      esc(m.mount) + (typeof m.freeGB === 'number' ? '（剩余 ' + m.freeGB.toFixed(1) + 'GB）' : '') + '</option>').join('');
   box.style.display = 'block';
   box.innerHTML =
     '<div style="font-size:12px;color:#e8ecf1;font-weight:600;margin-bottom:6px">✏ ' + (editingRuleId ? '编辑规则' : '添加规则') + '</div>' +
@@ -284,6 +289,9 @@ function renderRuleEditor(r) {
       '<span class="rw-lbl">指标</span><select class="rw-select" id="ed-metric">' + metricOpts + '</select>' +
       '<span class="rw-lbl">比较</span><select class="rw-select" id="ed-op">' + opOpts + '</select>' +
       '<input class="rw-input" id="ed-threshold" value="' + r.threshold + '" style="width:60px"></div>' +
+    '<div class="rw-row" id="ed-mount-row" style="' + (r.sensor === 'disk' ? '' : 'display:none') + '">' +
+      '<span class="rw-lbl">磁盘分区</span><select class="rw-select" id="ed-mount">' + mountOpts + '</select>' +
+      '<span class="rw-gray">指定分区后仅该分区触发；系统启动分区（EFI//boot）默认不监控</span></div>' +
     '<div class="rw-row" id="ed-gpu-hint" style="' + (r.sensor === 'gpu' || r.sensor === 'nvidia-gpu' ? '' : 'display:none') + ';font-size:11px;color:#c8a06a">' +
       '<span class="rw-lbl" style="width:auto">⚠ GPU 温度/占用仅支持 NVIDIA 显卡；AMD 显卡请用插件市场安装 amd-gpu-stats</span></div>' +
     '<div class="rw-row"><span class="rw-lbl">持续时长</span><input class="rw-input" id="ed-duration" value="' + (r.durationMs / 1000) + '" style="width:50px">' +
@@ -303,7 +311,9 @@ function renderRuleEditor(r) {
     document.getElementById('ed-metric').innerHTML = ({ ...SENSOR_METRICS, ...pluginSensorMetrics }[s] || []).map(m =>
       '<option value="' + m.k + '">' + m.label + '</option>').join('');
     const hint = document.getElementById('ed-gpu-hint');
-    if (hint) hint.style.display = (s === 'gpu') ? '' : 'none';
+    if (hint) hint.style.display = (s === 'gpu' || s === 'nvidia-gpu') ? '' : 'none';
+    const mountRow = document.getElementById('ed-mount-row');
+    if (mountRow) mountRow.style.display = (s === 'disk') ? '' : 'none';
   });
   document.getElementById('ed-save').addEventListener('click', () => {
     const obj = {
@@ -315,6 +325,8 @@ function renderRuleEditor(r) {
       severity: val('ed-sev'), label: val('ed-label') || '未命名', description: val('ed-desc'),
       sound: val('ed-sound') || 'auto', enabled: true
     };
+    // 磁盘分区仅对磁盘规则有意义；换传感器时清除残留 mount
+    obj.mount = obj.sensor === 'disk' ? (val('ed-mount') || undefined) : undefined;
     if (editingRuleId) {
       const i = config.rules.findIndex(x => x.id === editingRuleId);
       if (i >= 0) config.rules[i] = { ...config.rules[i], ...obj };

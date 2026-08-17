@@ -15,6 +15,9 @@ function defaultListDrives(fs) {
 // 枚举 Linux/macOS 挂载点：读 /proc/mounts（Linux），只保留真实块设备挂载（源以 /dev/ 开头，
 // 覆盖 root/home/数据盘，天然排除 proc/sysfs/tmpfs/NFS 等伪或网络文件系统），
 // 排除 loop（snap/flatpak 只读镜像）与 ram/zram 设备（RAM 盘，空间语义失真），
+// 排除系统启动分区——fstype vfat/msdos（EFI 规范必为 FAT，可挂任意路径）与
+// 目标 /boot、/boot/efi、/efi（独立 /boot 常为 ext4）：这类分区容量小（通常 <1GB），
+// 剩余空间恒低于默认 10GB 阈值，会让「磁盘空间不足」规则开机即误报（issue#2）。
 // 按源设备去重（同一设备 bind mount 到多处时只保留首个目标，避免同盘多封重复信）。无子进程。
 function defaultListMounts(fs) {
   try {
@@ -23,11 +26,13 @@ function defaultListMounts(fs) {
     const mounts = [];
     for (const line of String(text).split('\n')) {
       const parts = line.split(/\s+/);
-      if (parts.length < 2) continue;
-      const src = parts[0], target = parts[1];
+      if (parts.length < 3) continue;
+      const src = parts[0], target = parts[1], fstype = parts[2];
       if (typeof src !== 'string' || !src.startsWith('/dev/')) continue;
       const dev = src.slice('/dev/'.length);
       if (/^(loop|ram|zram)\d/.test(dev)) continue;
+      if (/^(vfat|msdos)$/.test(fstype)) continue;                    // EFI/启动分区（FAT 系）
+      if (/^\/(boot|boot\/efi|efi)$/.test(target)) continue;          // 独立 /boot（ext4 等）
       if (seen.has(dev)) continue;
       seen.add(dev);
       mounts.push(target);

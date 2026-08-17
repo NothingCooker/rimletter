@@ -132,7 +132,12 @@ function reloadEverything() {
     onError: (e) => { if (log) log.error('轮询异常', e); },
     onEvent: (e) => {
       if (e.type === 'alert') {
-        triggerLetter({ severity: e.alert.severity, title: e.alert.label, description: e.alert.description, sound: e.alert.sound });
+        // 磁盘告警：描述末尾附上具体挂载点（rules 里可指定分区；未指定时用户也能看出是哪个盘）
+        let description = e.alert.description || '';
+        if (e.alert.sensor === 'disk' && e.alert.mount && description.indexOf(e.alert.mount) === -1) {
+          description += '（' + e.alert.mount + '）';
+        }
+        triggerLetter({ severity: e.alert.severity, title: e.alert.label, description, sound: e.alert.sound });
         // 插件事件总线：api.on('alert') 订阅者收到告警对象（README/设置页文档承诺的 API）
         emitPluginEvent(registry.pluginConfigHandlers, 'alert', e.alert);
       } else if (e.type === 'recovery') {
@@ -375,6 +380,17 @@ ipcMain.handle('rules:set', (e, rules) => {
   saveConfig(configDir, config);
   send('config:changed', config);
   return config.rules;
+});
+// 当前磁盘分区列表（设置窗规则编辑器「磁盘分区」下拉用）：读一次磁盘快照，取各挂载点
+ipcMain.handle('disk:mounts', async () => {
+  try {
+    const st = await getSensors().snapshot(['disk']);
+    return (Array.isArray(st.disk) ? st.disk : []).map(d => ({
+      mount: d.mount,
+      freeGB: typeof d.freeGB === 'number' ? d.freeGB : undefined,
+      usedPct: typeof d.usedPct === 'number' ? d.usedPct : undefined
+    }));
+  } catch { return []; }
 });
 ipcMain.handle('letter:test', (e, severity) => triggerLetter({ severity, title: '测试播报', description: '这是来自设置窗口的测试信' }));
 ipcMain.handle('plugins:reload', () => { reloadEverything(); return { sensors: Object.keys(registry.sensors), customRules: registry.customRules, configs: Object.keys(registry.pluginConfigs) }; });

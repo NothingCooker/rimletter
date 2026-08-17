@@ -84,7 +84,7 @@ npm run build
 - 播报显示器（主显示器 / 第二显示器；第二屏断开时自动回退主屏）
 - 信图标大小、信弹出位置（新信出现在已有信的上方/下方/左侧/右侧 + 横向/纵向边距上限 2000 + 信间距）
 - 音效开关与音量
-- 告警规则（增删改、启停）
+- 告警规则（增删改、启停；磁盘规则可选指定监控的挂载点，未指定则任一分区触发）
 
 ## Linux 注意事项
 
@@ -92,7 +92,7 @@ npm run build
 - **托盘图标**：Linux 托盘依赖桌面环境的 StatusNotifier/AppIndicator 支持；GNOME 需安装 "AppIndicator and KStatusNotifierItem Support" 扩展。
 - **开机自启**：写入 XDG autostart（`~/.config/autostart/rimletter.desktop`），设置窗开关即可。
 - **GPU 监控**：仅 NVIDIA（nvidia-smi 直读）。AMD 官方插件 amd-gpu-stats 依赖 LibreHardwareMonitor，**仅支持 Windows**，Linux 上暂不可用。
-- **磁盘规则**：按真实块设备挂载点（`/`、`/home` 等）逐一判定，自动排除 loop/zram/网络盘等伪或非本地文件系统。
+- **磁盘规则**：按真实块设备挂载点（`/`、`/home` 等）逐一判定，自动排除 loop/zram/网络盘等伪或非本地文件系统；系统启动分区（EFI `/boot/efi`、独立 `/boot`，FAT/msdos 文件系统）默认不监控，避免小分区剩余空间恒低于阈值导致开机误报。可在规则编辑器中手动选择监控某个挂载点（规则字段 `mount`，未设置 = 全部）。
 
 ## HTTP API
 

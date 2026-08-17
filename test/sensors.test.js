@@ -193,6 +193,26 @@ test('defaultListMounts 无 /dev/ 挂载时回退根挂载点', () => {
   assert.deepEqual(defaultListMounts(mountsFs('proc /proc proc 0 0\ntmpfs /tmp tmpfs 0 0\n')), ['/']);
 });
 
+test('defaultListMounts 排除系统启动分区（EFI vfat/msdos 与独立 /boot）', () => {
+  // Manjaro/KDE 典型布局：EFI 分区（vfat）剩余空间恒 <10GB → 不排除会让「磁盘不足」规则开机误报（issue#2）
+  const text =
+    '/dev/nvme0n1p1 /boot/efi vfat rw,relatime,fmask=0022 0 0\n' +   // EFI 常规位置
+    '/dev/nvme0n1p2 / ext4 rw,relatime 0 0\n' +
+    '/dev/nvme0n1p3 /boot ext4 rw,relatime 0 0\n' +                  // 独立 /boot（ext4）
+    '/dev/nvme0n1p4 /home ext4 rw,relatime 0 0\n' +
+    '/dev/sdb1 /efi vfat rw,relatime 0 0\n' +                        // 非标准 EFI 挂载点（fstype 排除兜底）
+    '/dev/sdc1 /run/media/user/USB vfat rw,relatime 0 0\n';          // 可移动 FAT 盘同样排除
+  assert.deepEqual(defaultListMounts(mountsFs(text)), ['/', '/home']);
+});
+
+test('defaultListMounts 排除启动分区后仍有真实数据盘时不去重误删', () => {
+  const text =
+    '/dev/nvme0n1p1 /boot/efi vfat rw 0 0\n' +
+    '/dev/nvme0n1p2 / ext4 rw 0 0\n' +
+    '/dev/nvme0n1p2 /mnt/bind ext4 rw 0 0\n'; // 同一设备 bind → 仍只保留首个
+  assert.deepEqual(defaultListMounts(mountsFs(text)), ['/']);
+});
+
 test('Linux 平台默认用 /proc/mounts 枚举磁盘（statfsSync 读挂载点）', async () => {
   const fs = {
     readFileSync: () => PROC_MOUNTS,

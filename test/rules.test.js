@@ -69,6 +69,47 @@ test('磁盘规则对每个盘符求值，告警含 mount', () => {
   const out = evaluateRules(rules, snap, {}, T0);
   assert.equal(out.alerts.length, 1);
   assert.equal(out.alerts[0].mount, 'C:');
+  assert.equal(out.alerts[0].sensor, 'disk');
+});
+
+// ---- 磁盘规则按挂载点筛选（rule.mount）----
+
+const mkDiskRule = (id, mount) => ({
+  id, sensor: 'disk', metric: 'freeGB', operator: '<', threshold: 10, durationMs: 0,
+  severity: 'NeutralEvent', label: '磁盘不足', description: 'x', sound: 'auto', enabled: true, mount
+});
+
+test('rule.mount 指定分区：仅该分区触发，其余分区不足不告警', () => {
+  const snap = { disk: [{ mount: '/', freeGB: 500 }, { mount: '/home', freeGB: 5 }] };
+  const onlyRoot = evaluateRules([mkDiskRule('d1', '/')], snap, {}, T0);
+  assert.equal(onlyRoot.alerts.length, 0); // /home 不足但规则只看 /
+  const onlyHome = evaluateRules([mkDiskRule('d2', '/home')], snap, {}, T0);
+  assert.equal(onlyHome.alerts.length, 1);
+  assert.equal(onlyHome.alerts[0].mount, '/home');
+});
+
+test('rule.mount 未设置时保持旧行为：任一分区触发', () => {
+  const snap = { disk: [{ mount: '/', freeGB: 500 }, { mount: '/home', freeGB: 5 }] };
+  const out = evaluateRules([mkDiskRule('d1', undefined)], snap, {}, T0);
+  assert.equal(out.alerts.length, 1);
+});
+
+test('rule.mount 指向不存在的分区：视为无数据，不告警也不误判恢复', () => {
+  const rule = mkDiskRule('d1', '/gone');
+  const snap = { disk: [{ mount: '/', freeGB: 500 }] };
+  const out = evaluateRules([rule], snap, {}, T0);
+  assert.equal(out.alerts.length, 0);
+  // 已告警状态下分区消失（如拔盘）：保持告警，不发恢复信
+  const prev = { d1: { status: 'alerting', since: T0 - 2000 } };
+  const out2 = evaluateRules([rule], snap, prev, T0);
+  assert.equal(out2.recoveries.length, 0);
+  assert.equal(out2.nextState.d1.status, 'alerting');
+});
+
+test('rule.mount 对非磁盘（对象型）传感器无影响', () => {
+  const rules = [{ id: 'c1', sensor: 'cpu', metric: 'load', operator: '>', threshold: 85, durationMs: 0, severity: 'ThreatBig', label: 'CPU 过高', description: 'x', sound: 'auto', enabled: true, mount: '/' }];
+  const out = evaluateRules(rules, { cpu: { load: 90 } }, {}, T0);
+  assert.equal(out.alerts.length, 1);
 });
 
 test('neededSensors 只收集已启用规则引用的传感器（去重、保序）', () => {
