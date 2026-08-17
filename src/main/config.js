@@ -16,7 +16,7 @@ const DEFAULT_CONFIG = {
   // top 上方 / bottom 下方（堆栈垂直排列，bottom = 原版）/ left 左侧 / right 右侧（堆栈水平排列）；
   // offsetX/offsetY 为堆栈距右缘 / 上缘的边距（px）。letterGap 为信间距（px）。
   // 默认值与原版一致：右上角、右 26 上 64、间距 30、新信在下方。
-  appearance: { iconSize: 64, position: { side: 'bottom', offsetX: 26, offsetY: 64 }, letterGap: 30 },
+  appearance: { display: 'primary', iconSize: 64, position: { side: 'bottom', offsetX: 26, offsetY: 64 }, letterGap: 30 },
   sound: { enabled: true, volume: 0.25 },
   update: { enabled: true, proxyChannels: ['https://ghproxy.net', 'https://gh-proxy.com'], speedTest: true },
   market: { repo: 'NothingCooker/rimletter-official-plugins', branch: 'main' },
