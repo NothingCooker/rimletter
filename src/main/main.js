@@ -17,6 +17,7 @@ const { createMarket } = require('./market');
 const { createUpdater } = require('./updater');
 const speedtest = require('./speedtest');
 const { buildAutostartOptions, getLinuxAutostartEnabled, setLinuxAutostart } = require('./autostart');
+const { chooseTargetDisplay, displayBounds } = require('./displays');
 const { autoUpdater } = require('electron-updater');
 
 let mainWindow = null;
@@ -99,6 +100,7 @@ function triggerLetter({ severity, title, description, sound, dismissMs, recover
 
 function reloadEverything() {
   config = loadConfig(configDir);
+  positionOverlayWindow();
   registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHandlers: {}, pluginActions: {} };
   const disabled = new Set((config.plugins && config.plugins.disabled) || []);
   const pluginResults = loadPlugins({
@@ -220,11 +222,21 @@ function ensureOverlayGuard() {
   return overlayGuard;
 }
 
+function targetDisplay() {
+  const preference = config && config.appearance && config.appearance.display;
+  return chooseTargetDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay(), preference);
+}
+
+function positionOverlayWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const bounds = displayBounds(targetDisplay());
+  if (bounds) mainWindow.setBounds(bounds, false);
+}
+
 function createWindow() {
-  const { width, height } = screen.getPrimaryDisplay().bounds;
+  const bounds = displayBounds(targetDisplay()) || { x: 0, y: 0, width: 1, height: 1 };
   mainWindow = new BrowserWindow({
-    width, height,
-    x: 0, y: 0,
+    ...bounds,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -330,9 +342,19 @@ ipcMain.handle('autostart:set', (e, enable) => {
   return !!enable;
 });
 ipcMain.handle('config:get', () => config);
+ipcMain.handle('display:list', () => {
+  const primaryId = String(screen.getPrimaryDisplay().id);
+  return screen.getAllDisplays().map((display, index) => ({
+    id: String(display.id),
+    index,
+    primary: String(display.id) === primaryId,
+    bounds: displayBounds(display)
+  }));
+});
 ipcMain.handle('config:set', (e, patch) => {
   config = { ...config, ...patch };
   saveConfig(configDir, config);
+  positionOverlayWindow();
   send('config:changed', config);
   return config;
 });
@@ -456,6 +478,9 @@ app.whenReady().then(() => {
     onChanged: () => { reloadEverything(); }        // 装/卸后重载插件
   });
   createWindow();
+  screen.on('display-added', positionOverlayWindow);
+  screen.on('display-removed', positionOverlayWindow);
+  screen.on('display-metrics-changed', positionOverlayWindow);
   createTray();
   reloadEverything();
   initUpdater();

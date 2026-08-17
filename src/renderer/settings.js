@@ -58,6 +58,7 @@ function renderGeneral() {
   const pos = (config.appearance && config.appearance.position) || {};
   const curSide = pos.side || 'bottom';
   const curGap = (config.appearance && config.appearance.letterGap != null) ? config.appearance.letterGap : 30;
+  const curDisplay = (config.appearance && config.appearance.display) || 'primary';
   el.innerHTML =
     sliderRow('轮询间隔', 'pollIntervalMs', config.pollIntervalMs, 1000, 10000, '毫秒') +
     sliderRow('自动消失', 'autoDismissMs', config.autoDismissMs, 5000, 60000, '毫秒') +
@@ -67,6 +68,12 @@ function renderGeneral() {
         '<div class="rw-thumb" style="left:' + iconPct + '%"></div></div>' +
       '<span class="rw-gray" id="val-appearance.iconSize">' + (config.appearance && config.appearance.iconSize || 64) + ' px</span></div>' +
     '<div class="rw-sep"></div>' +
+    '<div class="rw-row"><span class="rw-lbl">播报显示器</span>' +
+      '<select class="rw-select" id="target-display">' +
+        '<option value="primary"' + (curDisplay === 'primary' ? ' selected' : '') + '>主显示器</option>' +
+        '<option value="secondary"' + (curDisplay === 'secondary' ? ' selected' : '') + '>第二显示器</option>' +
+      '</select>' +
+      '<span class="rw-gray" id="display-status">正在读取显示器…</span></div>' +
     '<div class="rw-row"><span class="rw-lbl">信弹出位置</span>' +
       '<select class="rw-select" id="letter-side">' + LETTER_SIDES.map(a =>
         '<option value="' + a[0] + '"' + (a[0] === curSide ? ' selected' : '') + '>' + a[1] + '</option>').join('') + '</select>' +
@@ -109,6 +116,20 @@ function renderGeneral() {
       '<button class="rw-btn" id="update-check-btn">立即检查</button>' +
       '<button class="rw-btn" id="update-install-btn" style="display:none">立即重启安装</button></div>';
   bindSliders(el);
+
+  const displayEl = document.getElementById('target-display');
+  const displayStatus = document.getElementById('display-status');
+  window.rimletter.getDisplays().then(displays => {
+    const secondary = displays.find(d => !d.primary);
+    displayStatus.textContent = secondary
+      ? '第二屏：' + secondary.bounds.width + '×' + secondary.bounds.height
+      : '未检测到第二显示器，暂时回退主屏';
+  }).catch(() => { displayStatus.textContent = '读取显示器失败'; });
+  displayEl.addEventListener('change', () => {
+    config.appearance = config.appearance || {};
+    config.appearance.display = displayEl.value;
+    persistConfig();
+  });
 
   // 信弹出位置：新信在已有信的上方/下方/左侧/右侧（实时生效，覆盖层 onConfigChange 立即重排）
   const sideEl = document.getElementById('letter-side');
