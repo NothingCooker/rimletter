@@ -419,7 +419,8 @@ async function renderMarketPane() {
   el.innerHTML =
     '<div style="margin-bottom:8px">' +
     '<button class="rw-btn" id="mkt-refresh">刷新市场</button> ' +
-    '<button class="rw-btn" id="mkt-update-all">更新全部</button></div>' +
+    '<button class="rw-btn" id="mkt-update-all">更新全部</button>' +
+    '<span id="mkt-hint" style="margin-left:10px;font-size:12px;color:#e8c56a"></span></div>' +
     '<div id="mkt-list" style="font-size:12px;color:#c8d0da">加载中…</div>' +
     '<div style="margin:8px 0;font-size:11px;color:#7f8a96">⚠ 插件将获得本机完全执行权限，仅从官方仓库安装可信插件。</div>';
 
@@ -427,7 +428,7 @@ async function renderMarketPane() {
     const btn = document.getElementById('mkt-refresh');
     btn.textContent = '刷新中…';
     try {
-      const data = await window.rimletter.refreshMarket(); // 先 purge jsDelivr 缓存再拉清单
+      const data = await window.rimletter.refreshMarket(); // 解析最新 commit 拉取，CDN 无过期问题
       renderMarket(data);
     } catch (e) {
       document.getElementById('mkt-list').innerHTML = '<span style="color:#ff8888">刷新失败：' + esc((e && e.message) || e) + '</span>';
@@ -440,7 +441,12 @@ async function renderMarketPane() {
     btn.textContent = '更新中…';
     try {
       const res = await window.rimletter.updateAllPlugins();
-      if (res && res.error && !Array.isArray(res)) { alert('更新失败：' + res.error); }
+      const msgs = [];
+      if (res && res.error && typeof res.error === 'string') throw new Error(res.error);
+      if (res && res.updated && res.updated.length) msgs.push('已更新 ' + res.updated.length + ' 个插件：' + res.updated.map(u => esc(u.id) + '@' + esc(u.version)).join('、'));
+      if (res && res.errors && res.errors.length) msgs.push('失败：' + res.errors.map(e => esc(e.id) + ' ' + esc(e.error)).join('；'));
+      if (!msgs.length) msgs.push('全部已是最新');
+      alert(msgs.join('\n'));
       renderMarketPane();
       renderPlugins();
     } catch (e) { alert('更新失败：' + (e.message || e)); btn.textContent = '更新全部'; }
@@ -506,18 +512,34 @@ async function renderMarket(prefetched) {
     box.innerHTML = '<span style="color:#7f8a96">官方仓库暂无插件。</span>';
     return;
   }
+  const updatable = data.filter(p => p.installed && p.hasUpdate);
+  const hint = document.getElementById('mkt-hint');
+  if (hint) hint.textContent = updatable.length ? '⚠ ' + updatable.length + ' 个插件可更新' : '';
   box.innerHTML = '<table class="rw-rule">' +
-    '<tr><th>插件</th><th>说明</th><th>状态</th><th style="width:180px">操作</th></tr>' +
-    data.map(p =>
-      '<tr><td><b>' + esc(p.name) + '</b></td>' +
-      '<td>' + esc(p.desc) + '</td>' +
-      '<td>' + (p.installed ? '<span style="color:#8fce8f">已安装</span>' : '<span style="color:#7f8a96">未安装</span>') + '</td>' +
-      '<td>' +
-        (p.installed
-          ? '<button class="rw-btn small" data-mkt-update="' + esc(p.id) + '">更新</button> ' +
-            '<button class="rw-btn small" data-mkt-uninstall="' + esc(p.id) + '">卸载</button>'
-          : '<button class="rw-btn small" data-mkt-install="' + esc(p.id) + '">安装</button>') +
-      '</td></tr>').join('') + '</table>';
+    '<tr><th>插件</th><th>版本</th><th>说明</th><th>状态</th><th style="width:170px">操作</th></tr>' +
+    data.map(p => {
+      const ver = p.version ? 'v' + esc(p.version) : '<span style="color:#7f8a96">—</span>';
+      let status, actions;
+      if (!p.installed) {
+        status = '<span style="color:#7f8a96">未安装</span>';
+        actions = '<button class="rw-btn small" data-mkt-install="' + esc(p.id) + '">安装</button>';
+      } else if (p.hasUpdate) {
+        status = '<span style="color:#e8c56a">有新版本' +
+          (p.installedVersion ? '（已装 v' + esc(p.installedVersion) + '）' : '') + '</span>';
+        actions = '<button class="rw-btn small" data-mkt-update="' + esc(p.id) + '">更新</button> ' +
+          '<button class="rw-btn small" data-mkt-uninstall="' + esc(p.id) + '">卸载</button>';
+      } else {
+        status = '<span style="color:#8fce8f">已安装' +
+          (p.installedVersion ? ' v' + esc(p.installedVersion) : '') + '</span>';
+        actions = '<button class="rw-btn small" data-mkt-uninstall="' + esc(p.id) + '">卸载</button>';
+      }
+      return '<tr><td><b>' + esc(p.name) + '</b>' +
+        (p.author ? ' <span style="color:#7f8a96;font-size:11px">by ' + esc(p.author) + '</span>' : '') + '</td>' +
+        '<td>' + ver + '</td>' +
+        '<td>' + esc(p.desc) + '</td>' +
+        '<td>' + status + '</td>' +
+        '<td>' + actions + '</td></tr>';
+    }).join('') + '</table>';
 
   box.querySelectorAll('[data-mkt-install]').forEach(b => b.addEventListener('click', async () => {
     b.textContent = '…';

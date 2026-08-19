@@ -37,6 +37,12 @@ test('update.enabled 默认开启', () => {
   assert.equal(DEFAULT_CONFIG.update.enabled, true);
 });
 
+test('market 默认开启插件更新自动检查（6 小时周期）', () => {
+  assert.equal(DEFAULT_CONFIG.market.autoCheck, true);
+  assert.equal(DEFAULT_CONFIG.market.checkIntervalMs, 6 * 3600 * 1000);
+  assert.equal(DEFAULT_CONFIG.market.repo, 'NothingCooker/rimletter-official-plugins');
+});
+
 test('update.enabled 可持久化关闭', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-'));
   const cfg = loadConfig(dir);

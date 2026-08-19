@@ -210,6 +210,35 @@ function initUpdater() {
   updater.scheduleInitialCheck();
 }
 
+// 插件更新自动检查：启动延迟 30s 首次检查，之后按 config.market.checkIntervalMs 周期检查。
+// 发现已安装插件有新版本时弹一封中性「插件更新可用」信（列出插件名与版本号），
+// 每会话同一批插件只提醒一次（用户不理不重复打扰）；检查失败只记日志不打扰。
+let pluginCheckTimer = null;
+const notifiedPluginUpdates = new Set();
+function initPluginUpdateCheck() {
+  const run = async () => {
+    if (!config.market || config.market.autoCheck === false) return;
+    try {
+      const updates = await market.checkUpdates();
+      if (!updates.length) { if (log) log.info('插件更新检查', '全部已是最新'); return; }
+      const fresh = updates.filter(u => !notifiedPluginUpdates.has(u.id));
+      if (!fresh.length) return; // 本会话已通知过这批插件
+      fresh.forEach(u => notifiedPluginUpdates.add(u.id));
+      if (log) log.info('插件更新检查', '发现可更新插件', fresh.map(u => u.id + ' v' + (u.installedVersion || '?') + '→v' + u.version).join(', '));
+      triggerLetter({
+        severity: 'NeutralEvent',
+        title: '插件更新可用',
+        description: fresh.map(u => '「' + u.name + '」v' + (u.installedVersion || '?') + ' → v' + u.version).join('、') +
+          '。打开设置 → 插件市场可更新。'
+      });
+    } catch (e) {
+      if (log) log.warn('插件更新检查失败', e && e.message || e);
+    }
+  };
+  setTimeout(run, 30 * 1000);
+  pluginCheckTimer = setInterval(run, (config.market && config.market.checkIntervalMs) || 6 * 3600 * 1000);
+}
+
 // 覆盖层鼠标穿透守卫：整窗平时点击穿透，悬停信件时临时可交互。
 // Windows 上 forward 切换可能丢失 mouseleave，导致可交互状态残留、整屏被挡。
 // 悬停检测权威在渲染层（elementFromPoint，同一坐标空间，规避跨进程坐标差异），
@@ -504,6 +533,7 @@ app.whenReady().then(() => {
   createTray();
   reloadEverything();
   initUpdater();
+  initPluginUpdateCheck();
 
   if (config.api.enabled) {
     apiServer = createApiServer({

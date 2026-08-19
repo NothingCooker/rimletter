@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { isSafeId, buildChannelUrls, buildPurgeUrl, parseManifest, createMarket } = require('../src/main/market');
+const { isSafeId, buildChannelUrls, buildPurgeUrl, buildResolveUrls, parseResolvedSha, resolveSha, compareVersions, hasUpdate, parseManifest, createMarket } = require('../src/main/market');
 
 test('isSafeId 接受字母数字下划线连字符', () => {
   assert.equal(isSafeId('weather'), true);
@@ -69,7 +69,8 @@ test('parseManifest 条目 file 非字符串抛错', () => {
 
 // ===== createMarket =====
 
-function makeMarket({ repo = 'o/plugins', branch = 'main', fetchImpl, pluginsDir, now }) {
+// resolve 默认返回 null（走 @branch 回退路径），保持既有通道测试不变；需测 commit 解析时显式注入
+function makeMarket({ repo = 'o/plugins', branch = 'main', fetchImpl, pluginsDir, now, resolve = async () => null }) {
   const state = { market: { repo, branch }, plugins: { disabled: ['old'] } };
   const saved = [];
   let changed = 0;
@@ -79,6 +80,7 @@ function makeMarket({ repo = 'o/plugins', branch = 'main', fetchImpl, pluginsDir
     configDir: path.dirname(pluginsDir),
     fetch: fetchImpl,
     now,
+    resolve,
     purgeDelayMs: 0,
     onChanged: () => { changed++; }
   });
@@ -186,7 +188,7 @@ test('uninstall 删除文件并触发 onChanged', async () => {
   assert.equal(changed(), 1);
 });
 
-test('updateAll 重装所有已安装插件', async () => {
+test('updateAll 更新有更新的已安装插件（无本地版本记录视为可更新）', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
   const pluginsDir = path.join(dir, 'plugins');
   fs.mkdirSync(pluginsDir, { recursive: true });
@@ -195,13 +197,54 @@ test('updateAll 重装所有已安装插件', async () => {
   const fileUrls = buildChannelUrls('o/plugins', 'main', 'plugin-weather/plugin-weather.js');
   const fetchImpl = routeFetch({
     [urls[0].url]: { text: MANIFEST },
-    [fileUrls[0].url]: { text: 'new-content' }
+    [urls[1].url]: { text: MANIFEST },
+    [fileUrls[0].url]: { text: 'new-content' },
+    [fileUrls[1].url]: { text: 'new-content' }
   });
   const { market } = makeMarket({ fetchImpl, pluginsDir });
-  const results = await market.updateAll();
-  assert.equal(results.length, 1);
-  assert.equal(results[0].ok, true);
+  const res = await market.updateAll();
+  assert.equal(res.updated.length, 1, '无版本记录 → 视为可更新');
+  assert.equal(res.updated[0].id, 'weather');
+  assert.equal(res.updated[0].version, '1.0.0');
+  assert.equal(res.skipped.length, 0);
+  assert.equal(res.errors.length, 0);
   assert.equal(fs.readFileSync(path.join(pluginsDir, 'weather.js'), 'utf-8'), 'new-content');
+});
+
+test('updateAll 已是最新版本的插件跳过', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginsDir, 'weather.js'), 'same');
+  fs.writeFileSync(path.join(pluginsDir, '.installed.json'), JSON.stringify({ weather: { version: '1.0.0', updatedAt: 1 } }));
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fetchImpl = routeFetch({ [urls[0].url]: { text: MANIFEST }, [urls[1].url]: { text: MANIFEST } });
+  const { market } = makeMarket({ fetchImpl, pluginsDir });
+  const res = await market.updateAll();
+  assert.equal(res.updated.length, 0);
+  assert.deepEqual(res.skipped, ['weather']);
+  assert.equal(fs.readFileSync(path.join(pluginsDir, 'weather.js'), 'utf-8'), 'same', '不重下载');
+});
+
+test('updateAll 单项失败不中断且记录 error', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginsDir, 'weather.js'), 'old');
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fileUrls = buildChannelUrls('o/plugins', 'main', 'plugin-weather/plugin-weather.js');
+  const fetchImpl = routeFetch({
+    [urls[0].url]: { text: MANIFEST },
+    [urls[1].url]: { text: MANIFEST },
+    [fileUrls[0].url]: { error: new Error('down') },
+    [fileUrls[1].url]: { error: new Error('down') }
+  });
+  const { market } = makeMarket({ fetchImpl, pluginsDir });
+  const res = await market.updateAll();
+  assert.equal(res.updated.length, 0);
+  assert.equal(res.errors.length, 1);
+  assert.equal(res.errors[0].id, 'weather');
+  assert.ok(res.errors[0].error.includes('down'));
 });
 
 test('install 下载失败时无残留临时文件', async () => {
@@ -239,24 +282,207 @@ test('install 会通过 setConfig 持久化启用状态', async () => {
   assert.ok(persisted.plugins.disabled.includes('old'), '其它禁用项保留');
 });
 
-test('updateAll 单项失败不中断且记录 error', async () => {
+// ===== commit SHA 解析破 CDN 缓存 =====
+
+const SHA = '0123456789abcdef0123456789abcdef01234567';
+
+test('buildResolveUrls 生成 github API 与 data.jsdelivr 两种解析 URL', () => {
+  const urls = buildResolveUrls('o/plugins', 'main');
+  assert.equal(urls[0].name, 'github');
+  assert.equal(urls[0].url, 'https://api.github.com/repos/o/plugins/commits/main');
+  assert.equal(urls[1].name, 'jsdelivr');
+  assert.equal(urls[1].url, 'https://data.jsdelivr.com/v1/packages/gh/o/plugins@main');
+});
+
+test('parseResolvedSha 从 github {sha} 与 jsdelivr {version} 提取 40 位 hex', () => {
+  assert.equal(parseResolvedSha(JSON.stringify({ sha: SHA })), SHA);
+  assert.equal(parseResolvedSha(JSON.stringify({ version: SHA })), SHA);
+  assert.equal(parseResolvedSha('not json'), null);
+  assert.equal(parseResolvedSha(JSON.stringify({ sha: 'short' })), null);
+  assert.equal(parseResolvedSha(JSON.stringify({ sha: 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEF' })), null, '非 hex 拒绝');
+  assert.equal(parseResolvedSha(JSON.stringify({})), null);
+});
+
+test('resolveSha 优先 github API，失败回退 data.jsdelivr', async () => {
+  const urls = buildResolveUrls('o/plugins', 'main');
+  const fetchImpl = routeFetch({
+    [urls[0].url]: { text: JSON.stringify({ sha: SHA }) },
+    [urls[1].url]: { text: JSON.stringify({ version: SHA }) }
+  });
+  assert.deepEqual(await resolveSha('o/plugins', 'main', fetchImpl), { channel: 'github', sha: SHA });
+  const fetchImpl2 = routeFetch({
+    [urls[0].url]: { error: new Error('github down') },
+    [urls[1].url]: { text: JSON.stringify({ version: SHA }) }
+  });
+  assert.deepEqual(await resolveSha('o/plugins', 'main', fetchImpl2), { channel: 'jsdelivr', sha: SHA });
+});
+
+test('resolveSha 全部通道失败返回 null（回退 @branch 拉取）', async () => {
+  const urls = buildResolveUrls('o/plugins', 'main');
+  const fetchImpl = routeFetch({
+    [urls[0].url]: { error: new Error('a') },
+    [urls[1].url]: { error: new Error('b') }
+  });
+  assert.equal(await resolveSha('o/plugins', 'main', fetchImpl), null);
+});
+
+test('resolve 成功时 list 按不可变 commit SHA 拉清单（无 ?cb=，无过期问题）', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
   const pluginsDir = path.join(dir, 'plugins');
   fs.mkdirSync(pluginsDir, { recursive: true });
-  fs.writeFileSync(path.join(pluginsDir, 'weather.js'), 'old');
+  const pinned = buildChannelUrls('o/plugins', SHA, 'plugins.json');
+  const seen = [];
+  const fetchImpl = async (url) => { seen.push(url); return { ok: true, status: 200, text: async () => MANIFEST }; };
+  const { market } = makeMarket({ fetchImpl, pluginsDir, resolve: async () => ({ channel: 'github', sha: SHA }) });
+  const list = await market.list();
+  assert.equal(list[0].id, 'weather');
+  assert.equal(seen.length, 1, '只请求 jsdelivr@sha，不请求 github 之外的通道');
+  assert.equal(seen[0], pinned[0].url, '清单从 @sha 不可变地址拉取');
+  assert.ok(!seen[0].includes('?cb='), 'commit 不可变，无需 cb');
+});
+
+test('install 的文件与清单同 commit（@sha 下载）', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  const manifestUrls = buildChannelUrls('o/plugins', SHA, 'plugins.json');
+  const fileUrls = buildChannelUrls('o/plugins', SHA, 'plugin-weather/plugin-weather.js');
+  const seen = [];
+  const fetchImpl = async (url) => {
+    seen.push(url.split('?')[0]);
+    if (url.split('?')[0] === manifestUrls[0].url) return { ok: true, status: 200, text: async () => MANIFEST };
+    if (url.split('?')[0] === fileUrls[0].url) return { ok: true, status: 200, text: async () => 'code' };
+    throw new Error('unexpected: ' + url);
+  };
+  const { market } = makeMarket({ fetchImpl, pluginsDir, resolve: async () => ({ channel: 'github', sha: SHA }) });
+  await market.install('weather');
+  assert.ok(seen.includes(fileUrls[0].url), '插件文件也从 @sha 下载');
+});
+
+test('resolve 成功但 @sha 通道全挂时抛错，不回退 @branch（避免新旧版本错配）', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  const pinned = buildChannelUrls('o/plugins', SHA, 'plugins.json');
+  const fetchImpl = routeFetch({
+    [pinned[0].url]: { error: new Error('cdn down') },
+    [pinned[1].url]: { error: new Error('raw down') }
+  });
+  const { market } = makeMarket({ fetchImpl, pluginsDir, resolve: async () => ({ channel: 'github', sha: SHA }) });
+  await assert.rejects(() => market.list(), /下载失败/);
+});
+
+// ===== 版本号 =====
+
+test('compareVersions 数字段逐段比较', () => {
+  assert.equal(compareVersions('1.2.0', '1.0.0'), 1);
+  assert.equal(compareVersions('1.0.0', '1.2.0'), -1);
+  assert.equal(compareVersions('1.10.0', '1.9.0'), 1, '多位数段按数值比较');
+  assert.equal(compareVersions('1.0.0', '1.0.0'), 0);
+  assert.equal(compareVersions('v1.0.0', '1.0.0'), 0, '忽略前导 v');
+});
+
+test('compareVersions 发布版大于预发布版', () => {
+  assert.equal(compareVersions('1.0.0', '1.0.0-beta'), 1);
+  assert.equal(compareVersions('0.1.0-beta', '0.1.0'), -1);
+  assert.equal(compareVersions('0.1.0-beta', '0.1.0-alpha'), 1);
+});
+
+test('compareVersions 非数字版本整串字符串比较', () => {
+  assert.equal(compareVersions('beta', 'alpha'), 1);
+  assert.equal(compareVersions('x', 'x'), 0);
+});
+
+test('hasUpdate 仅远端更高才提示', () => {
+  assert.equal(hasUpdate('1.2.0', '1.0.0'), true);
+  assert.equal(hasUpdate('1.0.0', '1.0.0'), false);
+  assert.equal(hasUpdate('1.0.0', '1.2.0'), false, '本地更高不回退');
+  assert.equal(hasUpdate('1.0.0-beta', '1.0.0'), false, '预发布不覆盖正式版');
+});
+
+test('hasUpdate 版本信息缺失时保守视为可更新', () => {
+  assert.equal(hasUpdate('', '1.0.0'), true, '清单无版本 → 可更新（旧行为）');
+  assert.equal(hasUpdate('1.0.0', ''), true, '本地无记录（手放插件）→ 可更新');
+  assert.equal(hasUpdate('', ''), true);
+});
+
+test('install 后记录已装版本，list 返回 installedVersion/hasUpdate', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
   const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
   const fileUrls = buildChannelUrls('o/plugins', 'main', 'plugin-weather/plugin-weather.js');
   const fetchImpl = routeFetch({
     [urls[0].url]: { text: MANIFEST },
     [urls[1].url]: { text: MANIFEST },
-    [fileUrls[0].url]: { error: new Error('down') },
-    [fileUrls[1].url]: { error: new Error('down') }
+    [fileUrls[0].url]: { text: 'code' },
+    [fileUrls[1].url]: { text: 'code' }
   });
+  const { market } = makeMarket({ fetchImpl, pluginsDir, now: () => 12345 });
+  await market.install('weather');
+  const record = JSON.parse(fs.readFileSync(path.join(pluginsDir, '.installed.json'), 'utf-8'));
+  assert.equal(record.weather.version, '1.0.0');
+  assert.equal(record.weather.updatedAt, 12345);
+  const list = await market.list();
+  assert.equal(list[0].installedVersion, '1.0.0');
+  assert.equal(list[0].hasUpdate, false, '版本一致无更新');
+});
+
+test('list 对旧版本已装插件标记 hasUpdate', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginsDir, 'weather.js'), 'x');
+  fs.writeFileSync(path.join(pluginsDir, '.installed.json'), JSON.stringify({ weather: { version: '0.9.0', updatedAt: 1 } }));
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fetchImpl = routeFetch({ [urls[0].url]: { text: MANIFEST }, [urls[1].url]: { text: MANIFEST } });
   const { market } = makeMarket({ fetchImpl, pluginsDir });
-  const results = await market.updateAll();
-  assert.equal(results.length, 1);
-  assert.equal(results[0].ok, false);
-  assert.ok(results[0].error.includes('down'));
+  const list = await market.list();
+  assert.equal(list[0].installed, true);
+  assert.equal(list[0].installedVersion, '0.9.0');
+  assert.equal(list[0].hasUpdate, true, '远端 1.0.0 > 本地 0.9.0');
+});
+
+test('uninstall 删除文件与版本记录', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginsDir, 'weather.js'), 'x');
+  fs.writeFileSync(path.join(pluginsDir, '.installed.json'), JSON.stringify({ weather: { version: '1.0.0', updatedAt: 1 } }));
+  const { market } = makeMarket({ fetchImpl: async () => { throw new Error('uninstall 不应下载'); }, pluginsDir });
+  await market.uninstall('weather');
+  assert.ok(!fs.existsSync(path.join(pluginsDir, 'weather.js')));
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(pluginsDir, '.installed.json'), 'utf-8')), {}, '记录已清');
+});
+
+test('checkUpdates 只返回已安装且有更新的插件', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginsDir, 'weather.js'), 'x');
+  fs.writeFileSync(path.join(pluginsDir, '.installed.json'), JSON.stringify({ weather: { version: '0.9.0', updatedAt: 1 } }));
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fetchImpl = routeFetch({ [urls[0].url]: { text: MANIFEST }, [urls[1].url]: { text: MANIFEST } });
+  const { market } = makeMarket({ fetchImpl, pluginsDir });
+  const updates = await market.checkUpdates();
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].id, 'weather');
+  assert.equal(updates[0].name, '天气');
+  assert.equal(updates[0].version, '1.0.0');
+  assert.equal(updates[0].installedVersion, '0.9.0');
+});
+
+test('checkUpdates 全部最新时返回空', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-mkt-'));
+  const pluginsDir = path.join(dir, 'plugins');
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginsDir, 'weather.js'), 'x');
+  fs.writeFileSync(path.join(pluginsDir, '.installed.json'), JSON.stringify({ weather: { version: '1.0.0', updatedAt: 1 } }));
+  const urls = buildChannelUrls('o/plugins', 'main', 'plugins.json');
+  const fetchImpl = routeFetch({ [urls[0].url]: { text: MANIFEST }, [urls[1].url]: { text: MANIFEST } });
+  const { market } = makeMarket({ fetchImpl, pluginsDir });
+  const updates = await market.checkUpdates();
+  assert.equal(updates.length, 0);
 });
 
 // ===== purge 破缓存 =====

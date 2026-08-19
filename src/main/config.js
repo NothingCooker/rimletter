@@ -19,7 +19,8 @@ const DEFAULT_CONFIG = {
   appearance: { display: 'primary', iconSize: 64, position: { side: 'bottom', offsetX: 26, offsetY: 64 }, letterGap: 30 },
   sound: { enabled: true, volume: 0.25 },
   update: { enabled: true, proxyChannels: ['https://ghproxy.net', 'https://gh-proxy.com'], speedTest: true },
-  market: { repo: 'NothingCooker/rimletter-official-plugins', branch: 'main' },
+  // market.autoCheck：启动后与周期自动检查插件更新（发现新版用「信」通知）；checkIntervalMs 检查周期
+  market: { repo: 'NothingCooker/rimletter-official-plugins', branch: 'main', autoCheck: true, checkIntervalMs: 6 * 3600 * 1000 },
   log: { level: 'info' }, // 日志级别：debug | info | warn | error
   plugins: { disabled: ['example'] }, // example 为演示插件，默认禁用，可在设置中启用
   rules: [
