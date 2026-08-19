@@ -3,8 +3,10 @@ name: Build
 on:
   push:
     branches: [master, main]
+    paths-ignore: ['patches/**', 'docs/**']  # 纯补丁/文档提交不触发全量构建（补丁测试走 patches.yml）
   pull_request:
     branches: [master, main]
+    paths-ignore: ['patches/**', 'docs/**']
   workflow_dispatch:
 
 jobs:
@@ -48,8 +50,10 @@ jobs:
           cache: npm
 
       # AppImage 构建/运行所需（构建不依赖 fuse，装上便于后续在 runner 上冒烟运行产物）
+      # apt 源偶发网络卡死（曾卡 50 分钟无输出）：加获取重试与超时，避免整个 job 无限等待
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libfuse2
+        timeout-minutes: 8
+        run: sudo apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 && sudo apt-get install -y libfuse2
 
       - name: Install dependencies
         run: npm ci

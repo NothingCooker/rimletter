@@ -55,8 +55,10 @@ jobs:
           node-version: 24
           cache: npm
 
+      # apt 源偶发网络卡死（曾卡 50 分钟无输出）：加获取重试与超时，避免整个 job 无限等待
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libfuse2
+        timeout-minutes: 8
+        run: sudo apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 && sudo apt-get install -y libfuse2
 
       - name: Install dependencies
         run: npm ci
