@@ -1,0 +1,41 @@
+name: Patch tests
+
+# 补丁（patches/**）提交走轻量 workflow：只跑补丁相关测试 + manifest 一致性校验，
+# 不触发 build.yml 的全量 Windows/Linux 构建（发补丁无需构建产物）。
+on:
+  push:
+    paths:
+      - 'patches/**'
+      - 'src/main/patcher.js'
+      - 'src/main/market.js'
+      - 'test/patcher.test.js'
+      - 'test/patches.test.js'
+  pull_request:
+    paths:
+      - 'patches/**'
+      - 'src/main/patcher.js'
+      - 'src/main/market.js'
+      - 'test/patcher.test.js'
+      - 'test/patches.test.js'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run patch tests
+        run: node --test test/patcher.test.js test/patches.test.js
+
+      - name: Verify manifest consistency
+        run: node scripts/build_patch_manifest.js --check

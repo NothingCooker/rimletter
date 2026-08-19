@@ -43,6 +43,14 @@ test('market 默认开启插件更新自动检查（6 小时周期）', () => {
   assert.equal(DEFAULT_CONFIG.market.repo, 'NothingCooker/rimletter-official-plugins');
 });
 
+test('patch 默认开启且指向主仓库 master', () => {
+  assert.equal(DEFAULT_CONFIG.patch.enabled, true);
+  assert.equal(DEFAULT_CONFIG.patch.repo, 'NothingCooker/rimletter');
+  assert.equal(DEFAULT_CONFIG.patch.branch, 'master');
+  assert.equal(DEFAULT_CONFIG.patch.crashThreshold, 2);
+  assert.equal(DEFAULT_CONFIG.patch.timeoutMs, 8000);
+});
+
 test('update.enabled 可持久化关闭', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rl-'));
   const cfg = loadConfig(dir);

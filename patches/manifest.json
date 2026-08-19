@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "updatedAt": "2026-08-19T16:28:07.824Z",
+  "patches": [
+    {
+      "id": "fix-001-empty-letter-label",
+      "title": "信标题为空时回退为紧急度名",
+      "minVersion": "1.0.0",
+      "maxVersion": "1.0.99",
+      "file": "patches/fix-001-empty-letter-label.js",
+      "sha256": "0db4a4941776510838213a3d56d1db2d065af469d7d72511d1752363a02f2889",
+      "severity": "bugfix",
+      "platforms": [
+        "win32",
+        "linux"
+      ]
+    }
+  ]
+}

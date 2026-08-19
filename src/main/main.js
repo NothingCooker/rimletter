@@ -1,23 +1,26 @@
 // src/main/main.js
+// 注意：跨模块调用一律对象访问（禁止解构导入）——热补丁（patcher.patchModule）只能
+// 原地替换模块导出对象属性，解构出来的函数引用替换不生效（补丁编写指南硬性约定）。
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen } = require('electron');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const execFileAsync = promisify(execFile);
-const { loadConfig, saveConfig } = require('./config');
-const { createLogger } = require('./log');
-const { createOverlayMouseGuard } = require('./overlayMouse');
-const { createSensors } = require('./sensors');
-const { createMonitor } = require('./monitor');
-const { ensureRuleId } = require('./rules');
-const { formatLetter, dismissMsFor } = require('./letters');
-const { createApiServer } = require('./api');
-const { loadPlugins, assertSchema, normalizeConfig, getPluginConfig, emitPluginEvent } = require('./plugins');
-const { createMarket } = require('./market');
-const { createUpdater } = require('./updater');
+const configMod = require('./config');
+const logMod = require('./log');
+const overlayMouseMod = require('./overlayMouse');
+const sensorsMod = require('./sensors');
+const monitorMod = require('./monitor');
+const rulesMod = require('./rules');
+const lettersMod = require('./letters');
+const apiMod = require('./api');
+const pluginsMod = require('./plugins');
+const marketMod = require('./market');
+const updaterMod = require('./updater');
 const speedtest = require('./speedtest');
-const { buildAutostartOptions, getLinuxAutostartEnabled, setLinuxAutostart } = require('./autostart');
-const { chooseTargetDisplay, displayBounds } = require('./displays');
+const autostartMod = require('./autostart');
+const displaysMod = require('./displays');
+const patcherMod = require('./patcher');
 const { autoUpdater } = require('electron-updater');
 
 let mainWindow = null;
@@ -32,6 +35,7 @@ let registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHa
 let lastPluginResults = [];
 let updater = null;
 let market = null;
+let patcher = null;            // 热补丁引擎（见 src/main/patcher.js）
 let overlayGuard = null;      // 覆盖层鼠标穿透守卫（见 overlayMouse.js）
 
 // Linux：设置桌面文件名（用于托盘/应用指示器的 desktop file 关联，须在 ready 事件前调用；
@@ -87,14 +91,14 @@ function getSensors() {
   // execFile（异步）让 GPU 读取走非阻塞路径，避免 systeminformation.graphics()
   // 内部 execSync 同步阻塞主进程（实测 ~0.5s/次、每 2s 一次 → 鼠标卡顿）
   // extraSensors 让 snapshot 派发内置 + 插件传感器（v0.3.1 修复插件传感器不被轮询）
-  return createSensors({ si, execFile: execFileAsync, extraSensors: () => registry.sensors });
+  return sensorsMod.createSensors({ si, execFile: execFileAsync, extraSensors: () => registry.sensors });
 }
 
 function triggerLetter({ severity, title, description, sound, dismissMs, recovery }) {
   // 消失时长按信类型取 live config：恢复信 recoveryDismissMs，其余 autoDismissMs
   // （此前恒用 DEFAULT_CONFIG.autoDismissMs=20000，设置页滑杆改了不生效）
-  const letter = formatLetter(severity, title, description, { sound: sound || undefined },
-    dismissMsFor(config, { dismissMs, recovery }));
+  const letter = lettersMod.formatLetter(severity, title, description, { sound: sound || undefined },
+    lettersMod.dismissMsFor(config, { dismissMs, recovery }));
   if (log) log.info('发信', severity, title);
   // 性能优化：覆盖层窗口平时隐藏，有信件才显示（不抢焦点），避免全屏透明窗持续合成
   if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.showInactive();
@@ -103,11 +107,11 @@ function triggerLetter({ severity, title, description, sound, dismissMs, recover
 }
 
 function reloadEverything() {
-  config = loadConfig(configDir);
+  config = configMod.loadConfig(configDir);
   positionOverlayWindow();
   registry = { sensors: {}, customRules: [], pluginConfigs: {}, pluginConfigHandlers: {}, pluginActions: {} };
   const disabled = new Set((config.plugins && config.plugins.disabled) || []);
-  const pluginResults = loadPlugins({
+  const pluginResults = pluginsMod.loadPlugins({
     pluginsDir: path.join(configDir, 'plugins'),
     apiFactory: name => makePluginApiFor(name),
     filter: name => !disabled.has(name)
@@ -124,7 +128,7 @@ function reloadEverything() {
   // 动态 snapshot 门面：每次轮询都读取最新传感器（含插件异步注册的），
   // 转发 keys 让 monitor 只轮询已启用规则引用的传感器
   const dynamicSensors = { snapshot: (keys) => getSensors().snapshot(keys) };
-  monitor = createMonitor({
+  monitor = monitorMod.createMonitor({
     sensors: dynamicSensors,
     pollIntervalMs: config.pollIntervalMs,
     getRules: getEffectiveRules,
@@ -139,11 +143,11 @@ function reloadEverything() {
         }
         triggerLetter({ severity: e.alert.severity, title: e.alert.label, description, sound: e.alert.sound });
         // 插件事件总线：api.on('alert') 订阅者收到告警对象（README/设置页文档承诺的 API）
-        emitPluginEvent(registry.pluginConfigHandlers, 'alert', e.alert);
+        pluginsMod.emitPluginEvent(registry.pluginConfigHandlers, 'alert', e.alert);
       } else if (e.type === 'recovery') {
         triggerLetter({ severity: 'PositiveEvent', title: e.recovery.label, description: e.recovery.description, recovery: true });
         // 插件事件总线：api.on('recovered') 订阅者收到恢复对象
-        emitPluginEvent(registry.pluginConfigHandlers, 'recovered', e.recovery);
+        pluginsMod.emitPluginEvent(registry.pluginConfigHandlers, 'recovered', e.recovery);
       }
     }
   });
@@ -154,7 +158,7 @@ function makePluginApiFor(name) {
   return {
     registerSensor(sensorName, fn) { registry.sensors[sensorName] = { name: sensorName, read: fn }; },
     registerRule(r) {
-      ensureRuleId(r, 'plugin');
+      rulesMod.ensureRuleId(r, 'plugin');
       const i = registry.customRules.findIndex(x => x.id === r.id);
       if (i >= 0) registry.customRules[i] = r;
       else registry.customRules.push(r);
@@ -168,11 +172,11 @@ function makePluginApiFor(name) {
     getState: async () => { try { return await getSensors().snapshot(); } catch { return {}; } },
     setInterval(fn, ms) { return setInterval(fn, ms); },
     registerConfig(schema) {
-      assertSchema(schema);
+      pluginsMod.assertSchema(schema);
       registry.pluginConfigs[name] = schema;
     },
     getConfig() {
-      return getPluginConfig(registry.pluginConfigs[name], config.pluginConfig && config.pluginConfig[name]);
+      return pluginsMod.getPluginConfig(registry.pluginConfigs[name], config.pluginConfig && config.pluginConfig[name]);
     },
     // 配置表单 button 字段的动作处理：插件注册 action，设置窗点按钮时调用，返回文本显示在按钮旁
     registerAction(action, fn) {
@@ -189,7 +193,7 @@ function makePluginApiFor(name) {
 
 function initUpdater() {
   if (!app.isPackaged) autoUpdater.forceDevUpdateConfig = true; // dev 模式用 dev-app-update.yml
-  updater = createUpdater({
+  updater = updaterMod.createUpdater({
     autoUpdater,
     isEnabled: () => !!(config.update && config.update.enabled),
     isSpeedTestEnabled: () => !!(config.update && config.update.speedTest),
@@ -207,7 +211,45 @@ function initUpdater() {
     })
   });
   updater.init();
-  updater.scheduleInitialCheck();
+  // 首次检查由 initPatcher 在补丁阶段完成后触发（保证「修 updater 的补丁」先于检查生效）
+}
+
+// 热补丁引擎（见 src/main/patcher.js）：
+// - preflight：崩溃熔断（同步，毫秒级）——上次异常启动达到阈值自动禁用最近补丁；
+// - applyAll：resolve SHA → manifest → 过滤 → 下载/校验/应用，全程不阻塞启动、永不抛错；
+// - 时序：补丁阶段完成后才 scheduleInitialCheck()，否则「修 updater 的补丁」来不及生效；
+// - 健康信号：运行 5 分钟后 + 正常退出时 markExitOk()，清零崩溃计数。
+let patchHealthTimer = null;
+function initPatcher() {
+  patcher = patcherMod.createPatcher({
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    fetch: globalThis.fetch,
+    appPath: app.getAppPath(),
+    stateFile: path.join(configDir, 'patch-state.json'),
+    cacheDir: path.join(configDir, 'patches'),
+    getConfig: () => config.patch || {},
+    log: (level, msg) => {
+      if (!log) return;
+      const fn = log[level] || log.info;
+      fn('[patch]', msg);
+    }
+  });
+  try {
+    const pre = patcher.preflight();
+    if (pre.rolledBack) log.warn('补丁回滚', '连续异常启动，已禁用补丁', pre.rolledBack);
+  } catch (e) {
+    if (log) log.warn('补丁熔断检查失败', e && e.message || e);
+  }
+  if (patchHealthTimer) clearTimeout(patchHealthTimer);
+  patchHealthTimer = setTimeout(() => { try { patcher.markExitOk(); } catch { /* 状态写盘失败不致命 */ } }, 5 * 60 * 1000);
+  const finish = () => updater.scheduleInitialCheck(); // 无论成败都放行自动更新
+  Promise.race([
+    patcher.applyAll().then(res => {
+      if (log) log.info('补丁阶段', res.ok ? ('完成，本次应用 ' + res.applied.length + ' 个补丁') : ('跳过: ' + res.reason), res.error || '');
+    }).catch(e => { if (log) log.warn('补丁阶段异常', e && e.message || e); }),
+    new Promise(r => setTimeout(r, 15000)) // 兜底：补丁阶段最多等 15s，不卡自动更新
+  ]).then(finish);
 }
 
 // 插件更新自动检查：启动延迟 30s 首次检查，之后按 config.market.checkIntervalMs 周期检查。
@@ -245,7 +287,7 @@ function initPluginUpdateCheck() {
 // 主进程只做状态切换 + 超时看门狗兜底（渲染层无响应时强制恢复穿透）。
 function ensureOverlayGuard() {
   if (!overlayGuard) {
-    overlayGuard = createOverlayMouseGuard({
+    overlayGuard = overlayMouseMod.createOverlayMouseGuard({
       setClickThrough: () => {
         if (!mainWindow) return;
         mainWindow.setIgnoreMouseEvents(true, ignoreMouseOptions());
@@ -262,17 +304,17 @@ function ensureOverlayGuard() {
 
 function targetDisplay() {
   const preference = config && config.appearance && config.appearance.display;
-  return chooseTargetDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay(), preference);
+  return displaysMod.chooseTargetDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay(), preference);
 }
 
 function positionOverlayWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  const bounds = displayBounds(targetDisplay());
+  const bounds = displaysMod.displayBounds(targetDisplay());
   if (bounds) mainWindow.setBounds(bounds, false);
 }
 
 function createWindow() {
-  const bounds = displayBounds(targetDisplay()) || { x: 0, y: 0, width: 1, height: 1 };
+  const bounds = displaysMod.displayBounds(targetDisplay()) || { x: 0, y: 0, width: 1, height: 1 };
   mainWindow = new BrowserWindow({
     ...bounds,
     transparent: true,
@@ -304,7 +346,7 @@ function createWindow() {
 function setSettingsAlwaysOnTop(enabled) {
   config.settings = config.settings || {};
   config.settings.alwaysOnTop = !!enabled;
-  saveConfig(configDir, config);
+  configMod.saveConfig(configDir, config);
   if (settingsWin && !settingsWin.isDestroyed()) {
     settingsWin.setAlwaysOnTop(!!enabled, 'screen-saver');
   }
@@ -352,6 +394,7 @@ function createTray() {
 ipcMain.handle('app:info', () => ({
   name: 'RimLetter 边缘信使',
   version: app.getVersion(),
+  patchCount: patcher ? patcher.getState().applied.length : 0,
   author: 'NothingCooker',
   authorUrl: 'https://github.com/NothingCooker',
   social: 'https://space.bilibili.com/514132068'
@@ -359,12 +402,12 @@ ipcMain.handle('app:info', () => ({
 ipcMain.handle('autostart:get', () => {
   // Electron 的 getLoginItemSettings/setLoginItemSettings 仅支持 darwin/win32，
   // Linux 自启走 XDG autostart（~/.config/autostart/rimletter.desktop，见 autostart.js）
-  if (process.platform === 'linux') return getLinuxAutostartEnabled();
+  if (process.platform === 'linux') return autostartMod.getLinuxAutostartEnabled();
   return app.getLoginItemSettings().openAtLogin;
 });
 ipcMain.handle('autostart:set', (e, enable) => {
   if (process.platform === 'linux') {
-    return setLinuxAutostart(!!enable, {
+    return autostartMod.setLinuxAutostart(!!enable, {
       packaged: app.isPackaged,
       execPath: process.execPath,
       appPath: app.getAppPath()
@@ -372,7 +415,7 @@ ipcMain.handle('autostart:set', (e, enable) => {
   }
   // 开发模式（npm start）execPath 是裸 electron.exe，需显式传 app 路径参数，
   // 否则开机启动的是裸 electron → 打开 Electron 欢迎页而非主程序
-  app.setLoginItemSettings(buildAutostartOptions(enable, {
+  app.setLoginItemSettings(autostartMod.buildAutostartOptions(enable, {
     packaged: app.isPackaged,
     execPath: process.execPath,
     appPath: app.getAppPath()
@@ -386,27 +429,26 @@ ipcMain.handle('display:list', () => {
     id: String(display.id),
     index,
     primary: String(display.id) === primaryId,
-    bounds: displayBounds(display)
+    bounds: displaysMod.displayBounds(display)
   }));
 });
 ipcMain.handle('config:set', (e, patch) => {
   config = { ...config, ...patch };
-  saveConfig(configDir, config);
+  configMod.saveConfig(configDir, config);
   positionOverlayWindow();
   send('config:changed', config);
   return config;
 });
 ipcMain.handle('config:reset', () => {
-  const { DEFAULT_CONFIG } = require('./config');
-  config = { ...JSON.parse(JSON.stringify(DEFAULT_CONFIG)), api: config.api }; // 保留已生成的 token
-  saveConfig(configDir, config);
+  config = { ...JSON.parse(JSON.stringify(configMod.DEFAULT_CONFIG)), api: config.api }; // 保留已生成的 token
+  configMod.saveConfig(configDir, config);
   reloadEverything();
   send('config:changed', config);
   return config;
 });
 ipcMain.handle('rules:set', (e, rules) => {
   config.rules = rules;
-  saveConfig(configDir, config);
+  configMod.saveConfig(configDir, config);
   send('config:changed', config);
   return config.rules;
 });
@@ -438,8 +480,8 @@ function setPluginConfig(name, values) {
   const schema = registry.pluginConfigs[name];
   if (!schema) return { ok: false, error: '插件无配置定义' };
   config.pluginConfig = config.pluginConfig || {};
-  config.pluginConfig[name] = normalizeConfig(schema, values);
-  saveConfig(configDir, config);
+  config.pluginConfig[name] = pluginsMod.normalizeConfig(schema, values);
+  configMod.saveConfig(configDir, config);
   const handlers = (registry.pluginConfigHandlers[name] || {})['config'] || [];
   for (const cb of handlers) {
     try { cb(config.pluginConfig[name]); } catch (e) { console.error('[plugin:' + name + '] config handler error:', e); }
@@ -465,7 +507,7 @@ function getPluginList() {
       loaded: !!(loadedMap[name] && loadedMap[name].loaded),
       error: loadedMap[name] ? loadedMap[name].error : null,
       configSchema: schema,
-      configValues: schema ? getPluginConfig(schema, config.pluginConfig && config.pluginConfig[name]) : null
+      configValues: schema ? pluginsMod.getPluginConfig(schema, config.pluginConfig && config.pluginConfig[name]) : null
     };
   });
 }
@@ -475,7 +517,7 @@ ipcMain.handle('plugins:toggle', (e, name, enabled) => {
   const disabled = (config.plugins && config.plugins.disabled) || [];
   if (enabled) config.plugins.disabled = disabled.filter(n => n !== name);
   else if (!disabled.includes(name)) config.plugins.disabled = [...disabled, name];
-  saveConfig(configDir, config);
+  configMod.saveConfig(configDir, config);
   reloadEverything();
   return getPluginList();
 });
@@ -515,13 +557,13 @@ ipcMain.handle('update:install', () => { if (updater) updater.quitAndInstall(); 
 
 app.whenReady().then(() => {
   configDir = app.getPath('userData');
-  config = loadConfig(configDir);
-  log = createLogger({ dir: path.join(configDir, 'logs'), level: (config.log && config.log.level) || 'info' });
+  config = configMod.loadConfig(configDir);
+  log = logMod.createLogger({ dir: path.join(configDir, 'logs'), level: (config.log && config.log.level) || 'info' });
   log.info('RimLetter 启动', 'v' + app.getVersion(), 'userData=' + configDir);
   log.info('启用规则数', getEffectiveRules().length, '轮询间隔', config.pollIntervalMs + 'ms');
-  market = createMarket({
+  market = marketMod.createMarket({
     getConfig: () => config,              // 必须返回 live config 对象（非深拷贝），enablePlugin 会原地改它
-    setConfig: (cfg) => saveConfig(configDir, cfg),  // install 启用后立即持久化
+    setConfig: (cfg) => configMod.saveConfig(configDir, cfg),  // install 启用后立即持久化
     configDir,
     fetch: globalThis.fetch,
     onChanged: () => { reloadEverything(); }        // 装/卸后重载插件
@@ -533,19 +575,20 @@ app.whenReady().then(() => {
   createTray();
   reloadEverything();
   initUpdater();
+  initPatcher(); // 补丁阶段完成后自动触发 updater 首次检查
   initPluginUpdateCheck();
 
   if (config.api.enabled) {
-    apiServer = createApiServer({
+    apiServer = apiMod.createApiServer({
       token: config.api.token,
       cors: config.api.cors,
       onError: (e) => { if (log) log.error('API 启动失败（host 非法或端口被占）', e && e.message || e); },
       onLetter: triggerLetter,
       getState: async () => { try { return await getSensors().snapshot(); } catch { return {}; } },
       getRules: getEffectiveRules,
-      addRule: (r) => { ensureRuleId(r, 'api'); config.rules.push(r); saveConfig(configDir, config); return { ok: true }; },
-      updateRule: (id, r) => { const i = config.rules.findIndex(x => x.id === id); if (i >= 0) config.rules[i] = { ...config.rules[i], ...r }; saveConfig(configDir, config); return { ok: true }; },
-      deleteRule: (id) => { config.rules = config.rules.filter(x => x.id !== id); saveConfig(configDir, config); return { ok: true }; },
+      addRule: (r) => { rulesMod.ensureRuleId(r, 'api'); config.rules.push(r); configMod.saveConfig(configDir, config); return { ok: true }; },
+      updateRule: (id, r) => { const i = config.rules.findIndex(x => x.id === id); if (i >= 0) config.rules[i] = { ...config.rules[i], ...r }; configMod.saveConfig(configDir, config); return { ok: true }; },
+      deleteRule: (id) => { config.rules = config.rules.filter(x => x.id !== id); configMod.saveConfig(configDir, config); return { ok: true }; },
       reload: () => { reloadEverything(); return { ok: true }; }
     });
     apiServer.start(config.api.port, config.api.host).then(() => {
@@ -556,7 +599,11 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => { /* 常驻后台 */ });
-app.on('before-quit', () => { if (monitor) monitor.stop(); if (apiServer) apiServer.stop(); });
+app.on('before-quit', () => {
+  if (monitor) monitor.stop();
+  if (apiServer) apiServer.stop();
+  if (patcher) { try { patcher.markExitOk(); } catch { /* 状态写盘失败不致命 */ } }
+});
 
 // 崩溃兜底：写入日志便于排查（log 未初始化时静默）
 process.on('uncaughtException', (err) => { if (log) log.error('未捕获异常', err); });

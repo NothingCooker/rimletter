@@ -684,7 +684,8 @@ async function renderAbout() {
   el.innerHTML =
     '<div style="text-align:center;padding:30px 20px">' +
     '<div style="font-size:16px;font-weight:600;color:#fff;margin-bottom:6px">' + esc(info.name) + '</div>' +
-    '<div class="rw-gray" style="display:inline-block">版本 ' + esc(info.version) + '</div>' +
+    '<div class="rw-gray" style="display:inline-block">版本 ' + esc(info.version) +
+    (info.patchCount ? ' · 已应用补丁 ' + esc(String(info.patchCount)) : '') + '</div>' +
     '<div class="rw-sep"></div>' +
     '<div style="font-size:13px;color:#c8d0da;margin:8px 0">参考《边缘世界》(RimWorld) 右侧 Letter 播报的桌面功能性摆件</div>' +
     '<div style="margin:14px 0"><a href="' + esc(info.authorUrl || 'https://github.com/NothingCooker') + '" class="rw-btn" target="_blank" rel="noopener" style="text-decoration:none">GitHub 作者：' + esc(info.author) + '</a></div>' +

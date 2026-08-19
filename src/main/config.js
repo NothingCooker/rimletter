@@ -21,6 +21,11 @@ const DEFAULT_CONFIG = {
   update: { enabled: true, proxyChannels: ['https://ghproxy.net', 'https://gh-proxy.com'], speedTest: true },
   // market.autoCheck：启动后与周期自动检查插件更新（发现新版用「信」通知）；checkIntervalMs 检查周期
   market: { repo: 'NothingCooker/rimletter-official-plugins', branch: 'main', autoCheck: true, checkIntervalMs: 6 * 3600 * 1000 },
+  // patch：热补丁引擎（常规 bug 修复不升版本号，启动静默拉取应用，见 src/main/patcher.js）。
+  // enabled 总开关；repo/branch 补丁来源（patches/ 目录 + jsDelivr @sha 拉取，与插件市场同机制）；
+  // timeoutMs 补丁阶段整体超时（resolve+manifest）；applyTimeoutMs 单个补丁 apply 超时；
+  // fetchTimeoutMs 单次网络请求超时；crashThreshold 连续异常启动次数达到即回滚最近补丁；channel 预留灰度。
+  patch: { enabled: true, repo: 'NothingCooker/rimletter', branch: 'master', timeoutMs: 8000, applyTimeoutMs: 3000, fetchTimeoutMs: 5000, crashThreshold: 2, channel: 'stable' },
   log: { level: 'info' }, // 日志级别：debug | info | warn | error
   plugins: { disabled: ['example'] }, // example 为演示插件，默认禁用，可在设置中启用
   rules: [
