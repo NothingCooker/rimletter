@@ -261,12 +261,16 @@ function createPatcher(deps) {
     const settle = patch => Object.assign(out, patch);
 
     try {
-      // 1. 解析最新 commit SHA（整体超时由 deadline 兜底，resolve 挂起不卡启动）
+      // 1. 解析最新 commit SHA（整体超时由 deadline 兜底，resolve 挂起不卡启动）。
+      // 超时判定不依赖 alive() 二次时钟比较：Windows 上 uv 定时器基于系统时钟，
+      // 可能在 deadline 边界前数毫秒触发，now() < deadline 仍成立会误判成 resolve-failed
+      // （CI 偶发 flake）。deadline 定时器直接 resolve TIMEOUT 哨兵，胜出即判超时。
+      const TIMEOUT = Symbol('patcher-timeout');
       const resolved = await Promise.race([
         resolveRef(repo(), branch()),
-        new Promise(r => setTimeout(() => r(null), Math.max(1, deadline - now())))
+        new Promise(r => setTimeout(() => r(TIMEOUT), Math.max(1, deadline - now())))
       ]);
-      if (!alive()) return settle({ reason: 'timeout' });
+      if (resolved === TIMEOUT || !alive()) return settle({ reason: 'timeout' });
       if (!resolved || !resolved.sha) return settle({ reason: 'resolve-failed' });
       const sha = resolved.sha;
       log('info', '[patch] 解析到 commit ' + sha + '（' + resolved.channel + '）');
