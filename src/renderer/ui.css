@@ -73,13 +73,6 @@ html, body {
   from { transform: translateY(-200px); opacity: 0; }
   to   { transform: translateY(0); opacity: 1; }
 }
-.letter.leaving {
-  animation: bye .5s ease forwards;
-  pointer-events: none;
-}
-@keyframes bye {
-  to { opacity: 0; transform: translateY(-40px); }
-}
 /* 威胁级弹跳：整封信（图标+文字）一起横向弹跳 */
 .letter.bounce .letter-inner {
   animation: fb .9s ease-in-out 15s infinite;

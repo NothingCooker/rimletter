@@ -189,28 +189,20 @@ function dismiss(el, intervalId) {
     return [l, [r.left, r.top]];
   }));
 
-  // 被点掉的信立即移出布局（让缺口马上合拢），用 fixed ghost 在原位淡出
-  const rect = el.getBoundingClientRect();
-  const ghost = el.cloneNode(true);
-  ghost.classList.add('leaving');
-  ghost.style.animation = ''; // 清掉克隆自原元素的 inline animation，让 .leaving 的 bye 生效
-  ghost.style.opacity = '1';
-  ghost.style.position = 'fixed';
-  ghost.style.left = rect.left + 'px';
-  ghost.style.top = rect.top + 'px';
-  ghost.style.width = el.offsetWidth + 'px';
-  ghost.style.height = el.offsetHeight + 'px';
-  ghost.style.margin = '0';
-  ghost.style.zIndex = '20';
-  ghost.style.pointerEvents = 'none';
-  document.body.appendChild(ghost);
+  // 被点掉的信立即从布局和屏幕上消失（不再淡出），缺口靠下面的 FLIP 让其余信马上补位
   el.remove();
-  // 性能优化：信件全部消失后停止悬停检测并通知主进程隐藏覆盖层窗口（空闲零合成开销）
+  // 性能优化：信件全部消失后停止悬停检测并通知主进程隐藏覆盖层窗口（空闲零合成开销）。
+  // notifyEmpty 不能在 el.remove() 的同一帧里发：hide() 是跨进程 IPC，主进程可能在
+  // Chromium 真正把「已移除信件」这一帧合成/绘制出来之前就执行了 hide()——
+  // 这样窗口隐藏时缓存的最后一帧其实还是「信还在」的画面。下次新信到达 showInactive()
+  // 重新显示窗口时，会先闪一下这个缓存的旧帧，再刷新成新信的画面，就是「闪现」的成因。
+  // 用两层 requestAnimationFrame 确保移除信件那一帧已经真正绘制完，再通知主进程隐藏。
   if (stack.children.length === 0) {
     stopHoverCheck();
-    window.rimletter.notifyEmpty();
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (stack.children.length === 0) window.rimletter.notifyEmpty();
+    }));
   }
-  setTimeout(() => ghost.remove(), 520);
 
   // Invert：把其余信固定回旧位置（视觉不动）
   siblings.forEach(l => {
